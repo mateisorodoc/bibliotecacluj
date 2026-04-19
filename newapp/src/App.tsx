@@ -245,7 +245,7 @@ function HomePage() {
               Aceasta platforma este o alternativa la Biblioteca Centrala Universitara Lucian Blaga Cluj-Napoca, construita pentru acces mai usor, mai rapid si deschis tuturor.
             </p>
             <p className="max-w-xl text-base text-ink/55 leading-relaxed mb-4">
-              Scopul este ca orice persoana sa poata descoperi mai simplu cartile academice, nu doar studentii UBB.
+              Sustinem in continuare bibliotecile publice de stat si incurajam oamenii sa le viziteze si fizic, iar atunci cand isi permit, sa cumpere carti pentru a sprijini lectura si cultura locala.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-10 max-w-xl">
