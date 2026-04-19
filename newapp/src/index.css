@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500;1,6..72,600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
+
+  --color-primary: #4e6053;
+  --color-primary-container: #66796b;
+  --color-on-primary: #ffffff;
+  
+  --color-surface-base: #fbf9f4;
+  --color-surface-low: #f5f3ee;
+  --color-surface-highest: #e4e2dd;
+  --color-surface-variant: #e4e2dd;
+  
+  --color-ink: #1b1c19;
+  --color-ink-variant: #434843;
+  
+  --color-secondary: #5d5f5b;
+  --color-secondary-container: #e2e3de;
+
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+@layer base {
+  body {
+    @apply bg-surface-base text-ink font-sans antialiased;
+  }
+}
+
+.glass-panel {
+  @apply bg-surface-low/85 backdrop-blur-2xl;
+}
+
+.frosted-nav {
+  @apply bg-surface-base/80 backdrop-blur-md;
+}
+
+/* Custom scrollbar to match the aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-surface-low;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-ink/10 rounded-full hover:bg-ink/20 transition-colors;
+}

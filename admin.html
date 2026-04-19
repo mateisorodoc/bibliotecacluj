@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca Alternativa Cluj | Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-shell">
+        <header class="admin-header">
+            <div>
+                <p class="eyebrow">Biblioteca Alternativa Cluj</p>
+                <h1>Administrare utilizatori si acces</h1>
+                <p id="adminIdentity" class="muted">Se incarca sesiunea...</p>
+            </div>
+            <div class="header-actions">
+                <a href="/app" class="secondary">Inapoi la aplicatie</a>
+                <button id="logoutBtn" class="danger">Delogare</button>
+            </div>
+        </header>
+
+        <section class="admin-metrics">
+            <article class="metric-card">
+                <p>Utilizatori total</p>
+                <h3 id="metricTotal">0</h3>
+            </article>
+            <article class="metric-card">
+                <p>Administratori activi</p>
+                <h3 id="metricAdmins">0</h3>
+            </article>
+            <article class="metric-card">
+                <p>Conturi active</p>
+                <h3 id="metricActive">0</h3>
+            </article>
+            <article class="metric-card">
+                <p>Conectari recente</p>
+                <h3 id="metricRecent">0</h3>
+            </article>
+        </section>
+
+        <section class="admin-grid">
+            <article class="panel">
+                <h2>Creare / Editare user</h2>
+                <form id="userForm" class="form-grid" autocomplete="off">
+                    <input type="hidden" id="userId">
+
+                    <label for="username">Username</label>
+                    <input id="username" name="username" type="text" required minlength="3">
+
+                    <label for="password">Parola</label>
+                    <input id="password" name="password" type="password" placeholder="Minim 8 caractere">
+
+                    <label for="role">Rol</label>
+                    <select id="role" name="role">
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                    </select>
+
+                    <label class="inline-check">
+                        <input id="isActive" name="isActive" type="checkbox" checked>
+                        Activ
+                    </label>
+
+                    <div class="form-actions">
+                        <button id="saveBtn" type="submit">Salveaza</button>
+                        <button id="resetBtn" type="button" class="secondary">Reset</button>
+                    </div>
+                    <p id="formMessage" class="message" aria-live="polite"></p>
+                </form>
+            </article>
+
+            <article class="panel wide">
+                <div class="table-head">
+                    <h2>Utilizatori</h2>
+                    <div class="table-tools">
+                        <button id="refreshBtn" class="secondary">Refresh</button>
+                        <button id="clearFiltersBtn" class="secondary">Reset filtre</button>
+                    </div>
+                </div>
+
+                <p class="table-meta">Afisare: <strong id="filteredCount">0</strong> utilizatori</p>
+
+                <div class="table-filters">
+                    <input id="searchUsers" type="text" placeholder="Cauta dupa username...">
+                    <select id="filterRole">
+                        <option value="all">Toate rolurile</option>
+                        <option value="admin">Admin</option>
+                        <option value="user">User</option>
+                    </select>
+                    <select id="filterStatus">
+                        <option value="all">Toate statusurile</option>
+                        <option value="active">Doar active</option>
+                        <option value="inactive">Doar inactive</option>
+                    </select>
+                    <select id="sortUsers">
+                        <option value="created_desc">Cele mai noi</option>
+                        <option value="created_asc">Cele mai vechi</option>
+                        <option value="username_asc">Username A-Z</option>
+                        <option value="username_desc">Username Z-A</option>
+                        <option value="last_login_desc">Ultimul login recent</option>
+                    </select>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Rol</th>
+                                <th>Activ</th>
+                                <th>Creat</th>
+                                <th>Ultimul login</th>
+                                <th>Actiuni</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersBody"></tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+    </div>
+
+    <script src="admin.js" defer></script>
+</body>
+</html>
