@@ -1,5 +1,4 @@
-﻿import { motion } from "motion/react";
-import { Link, useNavigate } from "react-router-dom";
+﻿import { Link, useNavigate } from "react-router-dom";
 import { LogIn, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from "react";
@@ -39,11 +38,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-surface-base flex flex-col items-center justify-center px-6 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white p-12 rounded-[2rem] shadow-2xl shadow-ink/5 border border-ink/5"
-      >
+      <div className="max-w-md w-full bg-white p-12 rounded-[2rem] shadow-2xl shadow-ink/5 border border-ink/5">
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-8 mx-auto">
           <ShieldCheck size={40} strokeWidth={1} />
         </div>
@@ -104,7 +99,7 @@ export default function LoginPage() {
             <Link to="/" className="text-primary font-semibold hover:opacity-80">Inapoi la pagina principala</Link>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

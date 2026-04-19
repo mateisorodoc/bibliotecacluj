@@ -1,10 +1,14 @@
-import { Menu, X, LogOut, User as UserIcon } from "lucide-react";
+import { Menu, X, LogOut, User as UserIcon, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../context/AuthContext";
 
-export default function Navbar() {
+type NavbarProps = {
+  themeMode: "light" | "dark";
+  onToggleTheme: () => void;
+};
+
+export default function Navbar({ themeMode, onToggleTheme }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -46,6 +50,17 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center space-x-4 md:space-x-6">
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="inline-flex items-center gap-2 rounded-full border border-ink/15 bg-surface-low px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold text-ink/70 hover:border-primary hover:text-primary transition-colors"
+              aria-label={themeMode === "dark" ? "Comuta pe tema deschisa" : "Comuta pe tema inchisa"}
+              title={themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {themeMode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              <span className="hidden md:inline">{themeMode === "dark" ? "Light" : "Dark"}</span>
+            </button>
+
             {user ? (
               <div className="hidden md:flex items-center space-x-5 px-3 py-1.5 bg-surface-highest rounded-full border border-ink/5">
                 <Link to="/dashboard/settings" className="flex items-center space-x-3 pr-2 border-r border-ink/10 hover:opacity-70 transition-opacity">
@@ -90,14 +105,8 @@ export default function Navbar() {
           </div>
         </div>
 
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="md:hidden absolute top-full left-0 w-full bg-surface-low border-t border-ink/5 p-5 space-y-4 shadow-xl"
-            >
+        {isOpen && (
+            <div className="md:hidden absolute top-full left-0 w-full bg-surface-low border-t border-ink/5 p-5 space-y-4 shadow-xl">
               {navLinks.map((link) => (
                 <Link
                   key={link.path}
@@ -123,6 +132,16 @@ export default function Navbar() {
                     : "User management"}
                 </Link>
               ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  onToggleTheme();
+                  setIsOpen(false);
+                }}
+                className="block w-full text-left font-sans text-base uppercase tracking-widest text-ink/70 font-medium"
+              >
+                {themeMode === "dark" ? "Tema deschisa" : "Tema inchisa"}
+              </button>
               <Link
                 to={user ? "/dashboard/settings" : "/login"}
                 onClick={() => setIsOpen(false)}
@@ -130,9 +149,8 @@ export default function Navbar() {
               >
                 {user ? "Profilul meu" : "Autentificare"}
               </Link>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
       </nav>
     </>
   );

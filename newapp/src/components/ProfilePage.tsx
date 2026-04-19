@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getProfile, updateProfile } from "../lib/api";
-import { motion } from "motion/react";
 import { User, Save, CheckCircle, AlertCircle } from "lucide-react";
 
 export default function ProfilePage() {
@@ -69,13 +68,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.5 }}
-      className="max-w-2xl mx-auto px-1 sm:px-2"
-    >
+    <div className="max-w-2xl mx-auto px-1 sm:px-2">
       <div className="mb-8 md:mb-12 px-2 sm:px-0">
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-ink mb-2">Setari Profil</h1>
         <p className="text-ink/50 text-sm sm:text-base font-sans font-medium italic">Actualizeaza informatiile contului pentru o experienta mai buna.</p>
@@ -145,6 +138,6 @@ export default function ProfilePage() {
           </button>
         </form>
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -17,7 +17,6 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
 import { createReadingList, deleteReadingList, listReadingLists } from "../lib/api";
-import { motion, AnimatePresence } from "motion/react";
 import type { ReadingList } from "../types";
 
 export default function Sidebar() {
@@ -110,23 +109,13 @@ export default function Sidebar() {
       : [])
   ];
 
-  const createListModal = (
-    <AnimatePresence>
-      {isCreating ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 sm:p-0">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => !isSubmitting && setIsCreating(false)}
-            className="absolute inset-0 bg-ink/60 backdrop-blur-sm"
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="relative w-full max-w-sm glass-panel p-8 rounded-3xl border border-white/40 shadow-2xl bg-white"
-          >
+  const createListModal = isCreating ? (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 sm:p-0">
+      <div
+        onClick={() => !isSubmitting && setIsCreating(false)}
+        className="absolute inset-0 bg-ink/60 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-sm glass-panel p-8 rounded-3xl border border-white/40 shadow-2xl bg-white">
             <button
               onClick={() => setIsCreating(false)}
               className="absolute top-4 right-4 text-ink/30 hover:text-ink transition-colors"
@@ -168,11 +157,9 @@ export default function Sidebar() {
                 </button>
               </div>
             </form>
-          </motion.div>
-        </div>
-      ) : null}
-    </AnimatePresence>
-  );
+      </div>
+    </div>
+  ) : null;
 
   return (
     <aside className="w-full md:w-64 flex-shrink-0 md:sticky md:top-32 md:h-[calc(100vh-160px)] px-0 md:px-4">

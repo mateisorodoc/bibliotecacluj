@@ -10,7 +10,6 @@ import CoverImage from "./components/CoverImage";
 import InviteRegistrationPage from "./components/InviteRegistrationPage";
 import { useAuth } from "./context/AuthContext";
 import { useLibrary } from "./context/LibraryContext";
-import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, Users, Building2, Trash2 } from "lucide-react";
 import {
   createAdminUser,
@@ -33,6 +32,9 @@ import type { AdminUser, Book, Faculty, InviteRequest, ReadingListItem, ReadingP
 
 const EXPLORE_CACHE_TTL_MS = 1000 * 60 * 10;
 let exploreBooksCache: { signature: string; savedAt: number; books: Book[] } | null = null;
+const THEME_STORAGE_KEY = "bcu_theme_mode";
+
+type ThemeMode = "light" | "dark";
 
 function buildGenericTileImage(kind: "faculty" | "department"): string {
   const label = kind === "faculty" ? "FACULTATE" : "DEPARTAMENT";
@@ -118,10 +120,10 @@ async function loadBooksForFaculties(
   return Array.from(unique.values()).sort((a, b) => a.title.localeCompare(b.title, "ro"));
 }
 
-function MainLayout() {
+function MainLayout({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme: () => void }) {
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      <Navbar themeMode={themeMode} onToggleTheme={onToggleTheme} />
       <main className="flex-1">
         <Outlet />
       </main>
@@ -130,7 +132,7 @@ function MainLayout() {
   );
 }
 
-function DashboardLayout() {
+function DashboardLayout({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme: () => void }) {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -147,7 +149,7 @@ function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-surface-low">
-      <Navbar />
+      <Navbar themeMode={themeMode} onToggleTheme={onToggleTheme} />
       <div className="max-w-[1440px] mx-auto px-6 md:px-12 py-12 flex flex-col md:flex-row gap-12">
         <Sidebar />
         <main className="flex-1 min-w-0">
@@ -166,14 +168,14 @@ function BookCard({ book }: { book: Book }) {
     : (book.faculty || "BCU");
 
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="group">
+    <div className="group">
       <Link to={`/book/${encodeURIComponent(book.id)}`}>
-        <div className="aspect-[3/4.5] rounded-xs overflow-hidden mb-6 shadow-sm shadow-ink/10 group-hover:shadow-2xl transition-all duration-700 relative">
+        <div className="aspect-[3/4.5] rounded-xs overflow-hidden mb-6 shadow-sm shadow-ink/10 group-hover:shadow-2xl transition-all duration-300 relative">
           <CoverImage
             src={book.coverImage}
             title={book.title}
             seed={book.id}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
           <div className="absolute inset-0 bg-ink/20 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
@@ -191,7 +193,7 @@ function BookCard({ book }: { book: Book }) {
         </p>
         <p className="mt-1 text-[10px] text-ink/40 truncate">Folder: {toDisplayFolderPath(book.folderPath)}</p>
       </Link>
-    </motion.div>
+    </div>
   );
 }
 
@@ -232,10 +234,10 @@ function HomePage() {
   const formatNumber = (value: number) => new Intl.NumberFormat("ro-RO").format(value || 0);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="bg-surface-base">
+    <div className="bg-surface-base">
       <section className="relative min-h-[90vh] flex items-center overflow-hidden px-6 md:px-12 py-12">
         <div className="max-w-[1440px] mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.8 }} className="z-10">
+          <div className="z-10">
             <span className="font-sans text-xs uppercase tracking-[0.4em] font-bold text-primary mb-6 block">Biblioteca Alternativa Cluj</span>
             <h1 className="text-6xl md:text-8xl font-serif font-bold text-ink mb-8 leading-[0.95] tracking-tight">
               Acces liber la carti <br />
@@ -265,16 +267,16 @@ function HomePage() {
                 Biblioteca Mea
               </Link>
             </div>
-          </motion.div>
+          </div>
 
           <div className="relative h-full items-center justify-end">
-            <motion.div initial={{ opacity: 0, scale: 0.9, rotate: 2 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 1, delay: 0.2 }} className="w-full h-[420px] md:h-[520px] lg:h-[700px] relative">
+            <div className="w-full h-[420px] md:h-[520px] lg:h-[700px] relative">
               <div className="absolute inset-0 bg-primary/10 rounded-[100px] -rotate-6 blur-3xl opacity-30" />
               <div className="relative h-full aspect-[4/5] mx-auto shadow-2xl rounded-2xl overflow-hidden group">
                 <img
                   src={heroImage}
                   alt="Oameni intr-o biblioteca"
-                  className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-1000"
+                  className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink/55 via-transparent to-transparent flex items-end p-6 md:p-10">
                   <Link
@@ -286,7 +288,7 @@ function HomePage() {
                   </Link>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
@@ -305,9 +307,9 @@ function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {featured.map((book) => (
-              <motion.div key={book.id} className="group cursor-pointer" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+              <div key={book.id} className="group cursor-pointer">
                 <Link to={`/book/${encodeURIComponent(book.id)}`}>
-                  <div className="aspect-[2/3] rounded-sm overflow-hidden mb-6 shadow-md shadow-ink/5 group-hover:shadow-xl group-hover:-translate-y-2 transition-all duration-500">
+                  <div className="aspect-[2/3] rounded-sm overflow-hidden mb-6 shadow-md shadow-ink/5 group-hover:shadow-xl group-hover:-translate-y-2 transition-all duration-250">
                     <CoverImage src={book.coverImage} title={book.title} seed={book.id} className="w-full h-full object-cover" />
                   </div>
                   <div className="space-y-1">
@@ -315,12 +317,12 @@ function HomePage() {
                     <p className="font-serif italic text-ink/50 text-base">{book.author}</p>
                   </div>
                 </Link>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
       </section>
-    </motion.div>
+    </div>
   );
 }
 
@@ -422,7 +424,7 @@ function CatalogPage() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-12 py-12 md:py-20">
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-12 py-12 md:py-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-10 gap-5 md:gap-8">
         <div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-ink mb-2">Biblioteca Alternativa Cluj</h1>
@@ -535,7 +537,7 @@ function CatalogPage() {
         ) : null}
         </>
       )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -1491,44 +1493,70 @@ function Footer() {
   );
 }
 
-function AnimatedRoutes() {
+function AnimatedRoutes({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme: () => void }) {
   const location = useLocation();
   return (
-    <AnimatePresence mode="wait">
-      {/* @ts-ignore */}
-      <Routes location={location} key={location.pathname}>
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/search" element={<CatalogPage />} />
-          <Route path="/catalog" element={<Navigate to="/search" replace />} />
-          <Route path="/explore" element={<ExplorePage />} />
-          <Route path="/invite/:token" element={<InviteRegistrationPage />} />
-          <Route path="/book/:id" element={<BookDetailsPage />} />
-        </Route>
+    <Routes location={location} key={location.pathname}>
+      <Route element={<MainLayout themeMode={themeMode} onToggleTheme={onToggleTheme} />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/search" element={<CatalogPage />} />
+        <Route path="/catalog" element={<Navigate to="/search" replace />} />
+        <Route path="/explore" element={<ExplorePage />} />
+        <Route path="/invite/:token" element={<InviteRegistrationPage />} />
+        <Route path="/book/:id" element={<BookDetailsPage />} />
+      </Route>
 
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<DashboardOverview />} />
-          <Route path="library" element={<DashboardLibraryPage />} />
-          <Route path="reading" element={<DashboardReadingPage />} />
-          <Route path="history" element={<DashboardHistoryPage />} />
-          <Route path="wishlist" element={<DashboardWishlistPage />} />
-          <Route path="admin-users" element={<DashboardAdminUsersPage />} />
-          <Route path="lists/:id" element={<DashboardListPage />} />
-          <Route path="settings" element={<ProfilePage />} />
-        </Route>
+      <Route path="/dashboard" element={<DashboardLayout themeMode={themeMode} onToggleTheme={onToggleTheme} />}>
+        <Route index element={<DashboardOverview />} />
+        <Route path="library" element={<DashboardLibraryPage />} />
+        <Route path="reading" element={<DashboardReadingPage />} />
+        <Route path="history" element={<DashboardHistoryPage />} />
+        <Route path="wishlist" element={<DashboardWishlistPage />} />
+        <Route path="admin-users" element={<DashboardAdminUsersPage />} />
+        <Route path="lists/:id" element={<DashboardListPage />} />
+        <Route path="settings" element={<ProfilePage />} />
+      </Route>
 
-        <Route path="/login" element={<LoginPage />} />
-      </Routes>
-    </AnimatePresence>
+      <Route path="/login" element={<LoginPage />} />
+    </Routes>
   );
 }
 
 export default function App() {
   const basename = window.location.pathname.startsWith("/app") ? "/app" : "/";
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    try {
+      const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === "light" || saved === "dark") {
+        return saved;
+      }
+    } catch {
+      // Continue with system preference fallback.
+    }
+
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("theme-dark", themeMode === "dark");
+
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    } catch {
+      // Persistence is optional.
+    }
+  }, [themeMode]);
+
+  const handleToggleTheme = () => {
+    setThemeMode((current) => (current === "dark" ? "light" : "dark"));
+  };
 
   return (
     <Router basename={basename}>
-      <AnimatedRoutes />
+      <AnimatedRoutes themeMode={themeMode} onToggleTheme={handleToggleTheme} />
     </Router>
   );
 }

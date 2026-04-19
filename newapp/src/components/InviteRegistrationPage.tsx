@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, Loader2, UserPlus2 } from "lucide-react";
@@ -105,11 +104,7 @@ export default function InviteRegistrationPage() {
 
   return (
     <div className="min-h-screen bg-surface-base flex items-center justify-center px-6 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-lg w-full bg-white p-10 sm:p-12 rounded-[2rem] shadow-2xl shadow-ink/5 border border-ink/5"
-      >
+      <div className="max-w-lg w-full bg-white p-10 sm:p-12 rounded-[2rem] shadow-2xl shadow-ink/5 border border-ink/5">
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 mx-auto">
           <UserPlus2 size={38} strokeWidth={1.2} />
         </div>
@@ -205,7 +200,7 @@ export default function InviteRegistrationPage() {
             </button>
           ) : null}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

@@ -25,6 +25,29 @@
   --radius-xl: 0.75rem;
 }
 
+:root {
+  color-scheme: light;
+}
+
+:root.theme-dark {
+  color-scheme: dark;
+
+  --color-primary: #8aa894;
+  --color-primary-container: #6d8a77;
+  --color-on-primary: #0f1712;
+
+  --color-surface-base: #121512;
+  --color-surface-low: #1a1f1b;
+  --color-surface-highest: #252b26;
+  --color-surface-variant: #2b332d;
+
+  --color-ink: #edf3ed;
+  --color-ink-variant: #c6d0c7;
+
+  --color-secondary: #aab5ac;
+  --color-secondary-container: #2c342e;
+}
+
 @layer base {
   body {
     @apply bg-surface-base text-ink font-sans antialiased;
@@ -37,6 +60,18 @@
 
 .frosted-nav {
   @apply bg-surface-base/80 backdrop-blur-md;
+}
+
+.theme-dark .frosted-nav {
+  @apply bg-surface-low/80;
+}
+
+.theme-dark [class*="bg-white"] {
+  background-color: color-mix(in oklab, var(--color-surface-highest) 88%, black 12%) !important;
+}
+
+.theme-dark [class*="border-white"] {
+  border-color: color-mix(in oklab, var(--color-ink) 16%, transparent) !important;
 }
 
 /* Custom scrollbar to match the aesthetic */

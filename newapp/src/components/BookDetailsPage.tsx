@@ -1,5 +1,4 @@
 ﻿import { useParams, Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   BookOpen,
@@ -284,34 +283,21 @@ export default function BookDetailsPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
-      className="max-w-[1440px] mx-auto px-6 md:px-12 py-16 md:py-24"
-    >
-      <motion.button
-        initial={{ opacity: 0, x: -10 }}
-        animate={{ opacity: 1, x: 0 }}
+    <div className="max-w-[1440px] mx-auto px-6 md:px-12 py-16 md:py-24">
+      <button
         onClick={() => navigate(-1)}
         className="flex items-center space-x-2 text-ink/40 hover:text-primary transition-colors mb-12 group"
       >
         <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
         <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Inapoi</span>
-      </motion.button>
+      </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 md:gap-24">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8 }}
-          className="lg:col-span-5"
-        >
+        <div className="lg:col-span-5">
           <div className="rounded-2xl overflow-hidden shadow-2xl shadow-ink/10">
             <CoverImage src={book.coverImage} title={book.title} seed={book.id} className="w-full h-full object-cover aspect-[2/3]" />
           </div>
-        </motion.div>
+        </div>
 
         <div className="lg:col-span-7 space-y-8">
           <div>
@@ -402,23 +388,14 @@ export default function BookDetailsPage() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 sm:p-0">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => !actionLoading && setIsModalOpen(false)}
-              className="absolute inset-0 bg-ink/70 backdrop-blur-sm"
-            />
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 sm:p-0">
+          <div
+            onClick={() => !actionLoading && setIsModalOpen(false)}
+            className="absolute inset-0 bg-ink/70 backdrop-blur-sm"
+          />
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl p-8 max-h-[85vh] overflow-auto"
-            >
+          <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl p-8 max-h-[85vh] overflow-auto">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 text-ink/30 hover:text-ink transition-colors">
                 <X size={20} />
               </button>
@@ -427,14 +404,10 @@ export default function BookDetailsPage() {
               <p className="text-xs text-ink/50 font-medium mb-8">Select a collection or create a new one.</p>
 
               {successMessage && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center space-x-3"
-                >
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center space-x-3">
                   <CheckCircle size={18} className="text-green-600" />
                   <p className="text-green-700 text-sm font-medium">{successMessage}</p>
-                </motion.div>
+                </div>
               )}
 
               <div className="space-y-3 mb-6">
@@ -507,10 +480,9 @@ export default function BookDetailsPage() {
                   </form>
                 )}
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }

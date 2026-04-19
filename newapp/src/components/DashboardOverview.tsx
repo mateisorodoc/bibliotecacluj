@@ -1,6 +1,5 @@
 ﻿import { ArrowRight, Clock, Star, TrendingUp, ListChecks, Link2, BellRing } from "lucide-react";
 import { Link } from "react-router-dom";
-import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { createInviteLink, getDashboardSummary, getPendingInviteRequestCount, listMyInvites, resolveFileUrl } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -143,12 +142,9 @@ export default function DashboardOverview() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, idx) => (
-          <motion.div
+        {stats.map((stat) => (
+          <div
             key={stat.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.08 }}
             className="glass-panel p-6 rounded-2xl border border-ink/5 flex items-center justify-between shadow-sm"
           >
             <div>
@@ -158,7 +154,7 @@ export default function DashboardOverview() {
             <div className="p-3 bg-primary/10 rounded-xl text-primary">
               <stat.icon size={24} strokeWidth={1.5} />
             </div>
-          </motion.div>
+          </div>
         ))}
       </div>
 
@@ -217,14 +213,9 @@ export default function DashboardOverview() {
       </div>
 
       {currentRead ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="glass-panel p-8 rounded-3xl border border-ink/5 shadow-xl relative overflow-hidden group"
-        >
+        <div className="glass-panel p-8 rounded-3xl border border-ink/5 shadow-xl relative overflow-hidden group">
           <div className="flex flex-col md:flex-row gap-8 relative z-10">
-            <div className="w-32 md:w-48 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden transform group-hover:scale-105 transition-transform duration-500">
+            <div className="w-32 md:w-48 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden transform group-hover:scale-105 transition-transform duration-250">
               <CoverImage
                 src={currentRead.coverImage}
                 title={currentRead.title}
@@ -260,7 +251,7 @@ export default function DashboardOverview() {
           </div>
 
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50" />
-        </motion.div>
+        </div>
       ) : null}
 
       <div>
@@ -273,21 +264,18 @@ export default function DashboardOverview() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {recentBooks.map((book, idx) => (
-            <motion.div
+          {recentBooks.map((book) => (
+            <div
               key={book.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: idx * 0.1 + 0.3 }}
               className="group cursor-pointer"
             >
               <Link to={`/book/${encodeURIComponent(book.id)}`}>
-                <div className="aspect-[3/4] rounded-2xl overflow-hidden mb-5 shadow-lg group-hover:shadow-2xl transition-all duration-500 relative">
+                <div className="aspect-[3/4] rounded-2xl overflow-hidden mb-5 shadow-lg group-hover:shadow-2xl transition-all duration-250 relative">
                   <CoverImage
                     src={book.coverImage}
                     title={book.title}
                     seed={book.id}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-ink/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
                     <div className="text-on-primary transform translate-y-4 group-hover:translate-y-0 transition-transform font-sans text-[10px] uppercase tracking-widest font-bold flex items-center">
@@ -298,7 +286,7 @@ export default function DashboardOverview() {
                 <h4 className="font-serif text-lg font-bold text-ink leading-tight mb-1 group-hover:text-primary transition-colors">{book.title}</h4>
                 <p className="font-serif italic text-ink/50 text-sm">{book.author}</p>
               </Link>
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>
