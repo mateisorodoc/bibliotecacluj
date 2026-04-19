@@ -3,17 +3,16 @@ import type { Book, Faculty } from "../types";
 const LIBRARY_BASE_URL = "https://public-view.bcucluj.ro/pdfview/";
 const DSPACE_OAI_BASE_URL = "https://dspace.bcucluj.ro/oai/request";
 
-const SEARCH_CACHE_PREFIX = "bcu_react_index_v5_";
-const OAI_CACHE_KEY = "bcu_react_oai_fallback_v5";
+const SEARCH_CACHE_PREFIX = "bcu_react_index_v9_";
+const OAI_CACHE_KEY = "bcu_react_oai_fallback_v9";
+const OAI_SETS_CACHE_KEY = "bcu_react_oai_sets_v1";
 const SEARCH_CACHE_TTL = 1000 * 60 * 60 * 12;
-const INDEX_CONCURRENCY = 4;
+const INDEX_CONCURRENCY = 2;
+const BATCH_DELAY_MS = 450;
 const OAI_MAX_PAGES = 40;
 const OAI_MAX_RECORDS = 4000;
 
 const FACULTY_LABEL_OVERRIDES: Record<string, string> = {
-  BIOL: "Biologie si Geologie",
-  BUSIN: "Business",
-  CHIM: "Chimie si Inginerie Chimica",
   DREPT: "Drept",
   EDFIZ: "Educatie Fizica si Sport",
   FIZIC: "Fizica",
@@ -36,9 +35,6 @@ const FACULTY_LABEL_OVERRIDES: Record<string, string> = {
 };
 
 const STATIC_FACULTY_NAMES = [
-  "Biologie si Geologie",
-  "Business",
-  "Chimie si Inginerie Chimica",
   "Drept",
   "Educatie Fizica si Sport",
   "Fizica",
@@ -59,6 +55,260 @@ const STATIC_FACULTY_NAMES = [
   "Teologie Reformata",
   "Teologie Romano Catolica"
 ];
+
+// Official UBB specialization names per faculty (source: ubb.ro registration portal).
+// Used to validate folder-based department names — folders that don't match a known
+// specialization fall back to "General" instead of showing archival subject noise.
+const FACULTY_DEPARTMENTS: Record<string, string[]> = {
+  "Drept": [
+    "Drept", "Dreptul european si dreptul national al afacerilor",
+    "Dreptul International si Comparat al Afacerilor",
+    "Dreptul privat al Uniunii Europene", "Institutii de drept privat",
+    "International and comparative business law",
+    "Stiinte penale si criminalistica"
+  ],
+  "Educatie Fizica si Sport": [
+    "Antrenament si performanta sportiva",
+    "Educatie fizica si agrement in turism", "Educatie fizica si sport",
+    "Kinetoterapie in afectiunile aparatului locomotor",
+    "Kinetoterapie si motricitate speciala",
+    "Managementul organizatiilor si activitatilor sportive",
+    "Sport si performanta motrica"
+  ],
+  "Fizica": [
+    "Fizica", "Fizica informatica", "Fizica medicala", "Fizica tehnologica"
+  ],
+  "Geografie": [
+    "Amenajare si dezvoltare turistica", "Cartografie", "Geografia turismului",
+    "Geografie", "Geomatica", "Hidrologie si meteorologie",
+    "Planificare si dezvoltare regionala", "Planificare teritoriala",
+    "Resurse si riscuri in mediul hidroatmosferic",
+    "Turism si dezvoltare teritoriala"
+  ],
+  "Istorie si Filosofie": [
+    "Arheologie", "Arheologie si studii clasice", "Arhivistica",
+    "Cercetarea si valorificarea patrimoniului cultural", "Etnologie",
+    "Evaluarea politicilor si a programelor publice europene",
+    "Filosofie", "Filosofie antica si medievala", "Filosofie, cultura, comunicare",
+    "Istoria artei", "Istoria Europei de sud-est",
+    "Istoria si socio-antropologia epocii moderne",
+    "Istorie", "Istorie antica", "Istorie contemporana",
+    "Istorie contemporana si relatii internationale",
+    "Istorie medievala", "Istorie moderna",
+    "Istorie, memorie, oralitate in sec. XX",
+    "Leadership si comunicare in organizatii internationale",
+    "Managementul securitatii in societatea contemporana",
+    "Patrimoniu si turism cultural", "RISE",
+    "Securitate, Intelligence si competitivitate in organizatii",
+    "Societate, arta, identitati in Europa Centrala. De la medieval la modernitate",
+    "Stiinte ale informarii si documentarii", "Studii de securitate",
+    "Studii iudaice", "Teorie critica si studii multiculturale", "Turism cultural"
+  ],
+  "Litere": [
+    "Etnografie si antropologie maghiara", "Filologie clasica",
+    "Limba si literatura chineza", "Limba si literatura coreeana",
+    "Limba si literatura engleza", "Limba si literatura finlandeza",
+    "Limba si literatura franceza", "Limba si literatura germana",
+    "Limba si literatura italiana", "Limba si literatura japoneza",
+    "Limba si literatura maghiara", "Limba si literatura norvegiana",
+    "Limba si literatura portugheza", "Limba si literatura romana",
+    "Limba si literatura rusa", "Limba si literatura spaniola",
+    "Limba si literatura ucraineana", "Limbi moderne aplicate",
+    "Literatura universala si comparata",
+    "Scoala Doctorala Studii de Hungarologie",
+    "Studii culturale", "Studii si cercetari est-asiatice",
+    "Trunchi comun - MA", "Trunchi comun - RO"
+  ],
+  "Matematica si Informatica": [
+    "Informatica", "Matematica", "Matematica informatica", "UBB_Matematica"
+  ],
+  "Psihologie si Stiinte ale Educatiei": [
+    "Consiliere scolara si asistenta psihopedagogica",
+    "Consiliere si interventie psihologica in dezvoltarea umana",
+    "Consultanta si interventie psihologica", "Designer instructional",
+    "Didactica limbii si literaturii germane, cultura si civilizatia germana a Europei Centrale si de sud Est",
+    "Management curricular", "Management educational",
+    "Management, consiliere si asistenta psihopedagogica in institutiile incluzive",
+    "Metode si practici alternative in invatamantul primar si prescolar",
+    "Pedagogia Invatamantului primar si prescolar", "Pedagogie",
+    "Psihologia resurselor umane si sanatate organizationala",
+    "Psihologia sanatatii publice si clinica", "Psihologie",
+    "Psihologie clinica, consiliere psihologica si psihoterapie",
+    "Psihologie judiciara", "Psihopedagogie speciala",
+    "Strategii de invatare eficienta",
+    "Tehnici psihologice pentru controlul comportamentului si dezvoltarea potentialului uman",
+    "Terapia limbajului si audiologie educationala"
+  ],
+  "Sociologie si Asistenta Sociala": [
+    "Analiza datelor complexe", "Antropologie", "Asistenta sociala",
+    "Asistenta sociala in spatiul justitiei. Probatiune si mediere",
+    "Asistenta sociala si economie sociala",
+    "Cercetare sociologica avansata",
+    "Comunicare, societate si mass-media",
+    "Managementul serviciilor sociale",
+    "Managementul strategic al resurselor umane",
+    "Masterat european in drepturile copiilor",
+    "Munca si Transformari Sociale",
+    "Psihologie(Asistenta sociala)", "Resurse umane",
+    "Scoala doctorala de sociologie", "Sociologie"
+  ],
+  "Stiinta si Ingineria Mediului": [
+    "Calitatea mediului si surse energetice",
+    "Dezvoltare sustenabila si managementul mediului",
+    "Evaluarea riscului si securitatea mediului",
+    "Geografia mediului", "Gestiunea si protectia mediului",
+    "Ingineria mediului", "Ingineria sistemelor biotehnice si ecologice",
+    "Ingineria valorificarii deseurilor",
+    "Management si audit de mediu", "Stiinta mediului"
+  ],
+  "Stiinte Economice si Gestiunea Afacerilor": [
+    "Administrarea afacerilor",
+    "Administrarea afacerilor in turism, comert si servicii",
+    "Afaceri internationale", "Agrobusiness",
+    "Auditul si managementul financiar al fondurilor europene",
+    "Banci si piete de capital",
+    "Contabilitate si informatica de gestiune",
+    "Contabilitate si informatica de gestiune (Sighet)",
+    "Contabilitate si organizatii",
+    "Dezvoltare regionala durabila", "Diagnostic si evaluare",
+    "E - Business", "Econometrie si statistica aplicata",
+    "Economia comertului turismului si serviciilor",
+    "Economia firmei", "Economie agroalimentara si a mediului",
+    "Economie generala", "Economie si afaceri internationale",
+    "Expertiza contabila si audit",
+    "Finante corporative - asigurari", "Finante si banci",
+    "Fiscalitate", "Gestiune financiara corporativa",
+    "Gestiunea si evaluarea proiectelor",
+    "Gestiunea si evaluarea proiectelor (la Sighet)",
+    "Informatica economica", "International Business Management",
+    "Management", "Management contabil, audit si control",
+    "Management international", "Managementul afacerilor",
+    "Managementul dezvoltarii afacerilor",
+    "Managementul dezvoltarii afacerilor - Sfantu Gheorghe",
+    "Managementul resurselor umane", "Marketing", "Marketing digital",
+    "Modelarea afacerilor si calculul distribuit",
+    "Scoala doctorala Stiinte Economice si Gestiunea Afacerilor",
+    "Sisteme de asistare a deciziilor economice",
+    "Statistica si previziuni economice",
+    "Strategii si politici de marketing"
+  ],
+  "Stiinte Medicale si ale Sanatatii": [
+    "Biologie medicala", "Chimie clinica", "Fizica medicala",
+    "Health economics", "Inginerie medicala",
+    "Kinetoterapie si motricitate speciala", "Stiintele nutritiei"
+  ],
+  "Stiinte Politice, Administrative si ale Comunicarii": [
+    "Administratie publica", "Comunicare si relatii publice",
+    "Jurnalism", "Leadership in sectorul public", "Media digitala",
+    "Publicitate", "Servicii si politici de sanatate publica",
+    "Stiinta datelor sociale", "Stiinte politice", "Studii de conflict"
+  ],
+  "Studii Europene": [
+    "Administratie europeana", "Management",
+    "Relatii internationale si studii europene"
+  ],
+  "Teatru si Film": [
+    "Arta scurtmetrajului", "Arta teatrala - Actorie", "Arta teatrala - Regie",
+    "Arte Digitale Interactive - Digital Interactive Arts",
+    "Arte performative si film", "Artele spectacolului actorie",
+    "Artele spectacolului regie", "Cinematografie fotografie media",
+    "Filmologie",
+    "Management si Antreprenoriat Cultural in limba romana",
+    "Productia de film documentar - Documentary Filmmaking",
+    "Teatrologie",
+    "Teatru Contemporan Actorie si Teatrologie in limba maghiara"
+  ],
+  "Teologie Greco Catolica": [
+    "Fundamente crestine ale identitatii europene", "Teologie biblica",
+    "Teologie greco catolica asistenta sociala",
+    "Teologie greco catolica didactica", "Teologie greco catolica pastorala",
+    "Teologie pastorala in comunitatile ecleziale"
+  ],
+  "Teologie Ortodoxa": [
+    "Arta sacra",
+    "Arta sacra- Conservarea, restaurarea si crearea bunurilor culturale",
+    "Bioetica - morala, etica si deontologie",
+    "Consiliere pastorala si asistenta psihosociala",
+    "Doctrina, Hermeneutica si Istorie bisericeasca",
+    "Istoria religiilor, geopolitica religiilor monoteiste (crestinism, iudaism, islam)",
+    "Ortodoxie romaneasca si viata liturgica",
+    "Pastoratie si viata liturgica",
+    "Teologie ortodoxa didactica", "Teologie ortodoxa pastorala",
+    "Teologie ortodoxa asistenta sociala"
+  ],
+  "Teologie Reformata": [
+    "Mediere interconfesionala si interculturala", "Muzica",
+    "Muzica bisericeasca ecumenica", "Teologie - educatie",
+    "Teologie aplicata", "Teologie reformata didactica",
+    "Teologie-Muzica-Educatie"
+  ],
+  "Teologie Romano Catolica": [
+    "Teologie romano catolica didactica",
+    "Teologie romano catolica pastorala"
+  ]
+};
+
+// Normalize a string for comparison: lowercase + strip diacritics.
+function normForCompare(s: string): string {
+  return s.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Try to resolve a raw BCU folder name to an official UBB specialization for the given
+ * faculty. Returns the canonical specialization name on success, "General" if the folder
+ * is clearly a non-department entry (ZZ_*, empty), or null if the faculty is not in our
+ * static map (caller should use the raw folder name as-is).
+ *
+ * Matching strategy (in order):
+ *   1. Exact match after diacritic/case normalization.
+ *   2. Bidirectional substring: handles cases where the BCU folder is an abbreviation
+ *      ("Actorie") of the full specialization name ("Arta teatrala - Actorie") or vice
+ *      versa. Picks the longest/most specific match to minimise false positives.
+ *   3. No match → "General" (archival subject folder in a known-bad faculty).
+ */
+function resolveKnownDepartment(facultyLabel: string, rawDept: string): string | null {
+  const known = FACULTY_DEPARTMENTS[facultyLabel];
+
+  // Faculty not managed by our static map → caller decides.
+  if (!known) {
+    return null;
+  }
+
+  if (!rawDept) {
+    return "General";
+  }
+
+  // Meta-folders like ZZ_General, ZZ General → treat as General.
+  if (/^zz[_\s-]/i.test(rawDept) || normForCompare(rawDept) === "general") {
+    return "General";
+  }
+
+  const normalized = normForCompare(rawDept);
+
+  // 1. Exact match.
+  const exact = known.find((d) => normForCompare(d) === normalized);
+  if (exact) {
+    return exact;
+  }
+
+  // 2. Bidirectional substring — collect all candidates, pick the shortest (most specific).
+  const candidates = known.filter((d) => {
+    const dn = normForCompare(d);
+    return dn.includes(normalized) || normalized.includes(dn);
+  });
+
+  if (candidates.length > 0) {
+    // Prefer the shortest matching canonical name (avoids over-broad matches).
+    return candidates.sort((a, b) => a.length - b.length)[0];
+  }
+
+  // 3. No match → archival/subject folder.
+  return "General";
+}
 
 type DirectoryEntry = {
   name: string;
@@ -150,21 +400,38 @@ async function fetchDirectoryHtml(url: string): Promise<string> {
     return htmlCache.get(url) as string;
   }
 
-  const response = await fetch(`/api/bcu/html?url=${encodeURIComponent(url)}`, {
-    credentials: "include",
-    cache: "force-cache"
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) {
+      // Exponential backoff: 1s, 2s, 4s
+      await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+    }
+
+    const response = await fetch(`/api/bcu/html?url=${encodeURIComponent(url)}`, {
+      credentials: "include",
+      cache: "force-cache"
+    });
+
+    if (response.status === 429) {
+      console.warn(`[BCU] Rate limited (429) for ${url}. Attempt ${attempt + 1}/4. Retrying...`);
+      lastError = new Error(`HTTP 429 (attempt ${attempt + 1})`);
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+    if (!looksLikeListing(html)) {
+      throw new Error("Invalid listing content");
+    }
+
+    htmlCache.set(url, html);
+    return html;
   }
 
-  const html = await response.text();
-  if (!looksLikeListing(html)) {
-    throw new Error("Invalid listing content");
-  }
-
-  htmlCache.set(url, html);
-  return html;
+  throw lastError || new Error("Max retries reached");
 }
 
 async function fetchRawHtml(url: string): Promise<string> {
@@ -411,7 +678,78 @@ function realCoverForEntry(entry: DirectoryEntry, entries: DirectoryEntry[]): st
   return images[0]?.path || coverImageForPath(entry.path);
 }
 
-function parseOaiBooks(xml: string, facultyLabel: string): { books: Book[]; resumptionToken: string } {
+function parseOaiSets(xml: string): Map<string, string> {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, "application/xml");
+  const sets = Array.from(doc.getElementsByTagName("set"));
+  const map = new Map<string, string>();
+
+  for (const set of sets) {
+    const spec = (set.getElementsByTagName("setSpec")[0]?.textContent || "").trim();
+    const name = (set.getElementsByTagName("setName")[0]?.textContent || "").trim();
+    if (spec && name) {
+      map.set(spec, name);
+    }
+  }
+
+  return map;
+}
+
+async function fetchOaiSets(): Promise<Map<string, string>> {
+  try {
+    const raw = localStorage.getItem(OAI_SETS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.savedAt && Date.now() - parsed.savedAt < SEARCH_CACHE_TTL && Array.isArray(parsed.entries)) {
+        return new Map<string, string>(parsed.entries);
+      }
+    }
+  } catch {
+    // Cache miss — fetch fresh.
+  }
+
+  try {
+    const targetUrl = `${DSPACE_OAI_BASE_URL}?verb=ListSets`;
+    const response = await fetch(`/api/bcu/html?url=${encodeURIComponent(targetUrl)}`, {
+      credentials: "include",
+      cache: "force-cache"
+    });
+
+    if (!response.ok) {
+      return new Map();
+    }
+
+    const xml = await response.text();
+    const setsMap = parseOaiSets(xml);
+
+    try {
+      localStorage.setItem(OAI_SETS_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        entries: Array.from(setsMap.entries())
+      }));
+    } catch {
+      // Cache is optional.
+    }
+
+    return setsMap;
+  } catch {
+    return new Map();
+  }
+}
+
+function departmentFromSetSpecs(setSpecs: string[], setsMap: Map<string, string>): string {
+  // Prefer collection-level sets (col_*) which correspond to departments.
+  const colSpecs = setSpecs.filter((spec) => spec.startsWith("col_"));
+  for (const spec of colSpecs) {
+    const name = setsMap.get(spec);
+    if (name) {
+      return cleanDepartmentLabel(name);
+    }
+  }
+  return "";
+}
+
+function parseOaiBooks(xml: string, facultyLabel: string, setsMap: Map<string, string> = new Map()): { books: Book[]; resumptionToken: string } {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, "application/xml");
   if (doc.querySelector("parsererror")) {
@@ -422,10 +760,16 @@ function parseOaiBooks(xml: string, facultyLabel: string): { books: Book[]; resu
   const books: Book[] = [];
 
   for (const row of rows) {
+    const headerNode = row.getElementsByTagName("header")[0];
     const metadataNode = row.getElementsByTagName("metadata")[0];
     if (!metadataNode) {
       continue;
     }
+
+    // Extract setSpecs from the record header to resolve the real department.
+    const setSpecs = Array.from(headerNode?.getElementsByTagName("setSpec") ?? [])
+      .map((el) => (el.textContent || "").trim())
+      .filter(Boolean);
 
     const titles = getXmlValues(metadataNode, "dc:title");
     const identifiers = getXmlValues(metadataNode, "dc:identifier");
@@ -464,6 +808,24 @@ function parseOaiBooks(xml: string, facultyLabel: string): { books: Book[]; resu
       ? "metadata"
       : (language === "Nespecificata" ? "unknown" : "inferred");
 
+    // OAI records from BCU DSpace often have noisy metadata.
+    // We try to extract a specific department by scanning dc:subject, dc:description and dc:contributor
+    // against our known UBB specialization map for this faculty.
+    let resolvedDept = departmentFromSetSpecs(setSpecs, setsMap);
+
+    if (!resolvedDept || resolvedDept === "General") {
+      const metaStrings = [...subjects, ...descriptions, ...fallbackContributors];
+      for (const str of metaStrings) {
+        const found = resolveKnownDepartment(facultyLabel, str);
+        if (found && found !== "General") {
+          resolvedDept = found;
+          break;
+        }
+      }
+    }
+
+    const department = resolvedDept || "General";
+
     books.push({
       id: encodeURIComponent(normalizedHandleUrl),
       title,
@@ -473,7 +835,7 @@ function parseOaiBooks(xml: string, facultyLabel: string): { books: Book[]; resu
       genre: [subject],
       era: year ? String(year) : inferYearLabel(dates),
       faculty: facultyLabel,
-      department: cleanDepartmentLabel(subject),
+      department,
       language,
       languageSource,
       publishedYear: year,
@@ -496,8 +858,13 @@ async function loadCatalogFromOai(
 
   const cached = force ? null : loadOaiCache();
   if (cached && cached.length) {
-    return cached.map((book) => ({ ...book, faculty: faculty.label }));
+    // Only return books that genuinely belong to this faculty in the OAI pool.
+    // If the pool is generic/unfiltered, we only show books matching our label.
+    return cached.filter((book) => book.faculty === faculty.label);
   }
+
+  // Fetch the OAI sets map once — this gives us col_* → department name.
+  const setsMap = await fetchOaiSets();
 
   let token = "";
   let page = 0;
@@ -522,7 +889,7 @@ async function loadCatalogFromOai(
       break;
     }
 
-    const parsed = parseOaiBooks(xml, faculty.label);
+    const parsed = parseOaiBooks(xml, faculty.label, setsMap);
     for (const book of parsed.books) {
       if (!merged.has(book.filePath)) {
         merged.set(book.filePath, book);
@@ -545,8 +912,9 @@ async function loadCatalogFromOai(
   }
 
   const result = Array.from(merged.values()).sort((a, b) => a.title.localeCompare(b.title, "ro"));
-  saveOaiCache(result);
-  return result;
+  const normalized = normalizeBooksForUi(result);
+  saveOaiCache(normalized);
+  return normalized;
 }
 
 function getStaticFacultyFallback(): Faculty[] {
@@ -625,11 +993,102 @@ export async function discoverFaculties(): Promise<Faculty[]> {
 }
 
 function coverImageForPath(path: string): string {
-  return `https://picsum.photos/seed/${encodeURIComponent(path)}/480/720`;
+  void path;
+  return "";
 }
 
 function titleFromName(fileName: string): string {
   return fileName.replace(/\.pdf$/i, "");
+}
+
+function prettifyNamePart(value: string): string {
+  return decodeLabel(String(value || ""))
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseStructuredFileName(fileName: string): {
+  matched: boolean;
+  author?: string;
+  title?: string;
+  publishedYear?: number;
+} {
+  const raw = titleFromName(fileName);
+  const normalized = prettifyNamePart(raw);
+  const match = normalized.match(/^([^-]+)-(.+)-((?:19|20)\d{2})$/);
+  if (!match) {
+    return { matched: false };
+  }
+
+  const author = prettifyNamePart(match[1]);
+  const title = prettifyNamePart(match[2]);
+  const publishedYear = Number.parseInt(match[3], 10);
+
+  if (!author || !title || !Number.isFinite(publishedYear)) {
+    return { matched: false };
+  }
+
+  return {
+    matched: true,
+    author,
+    title,
+    publishedYear
+  };
+}
+
+function inferDepartmentFromFolderPath(folderPath: string): string {
+  const clean = decodeLabel(String(folderPath || "")).replace(/\/+$/, "");
+  if (!clean) {
+    return "General";
+  }
+
+  const byUrlPath = clean.split("/").filter(Boolean);
+  const lastSegment = byUrlPath[byUrlPath.length - 1] || "";
+  if (!lastSegment || /^pdfview$/i.test(lastSegment)) {
+    return "General";
+  }
+
+  return cleanDepartmentLabel(lastSegment) || "General";
+}
+
+function normalizeBookForUi(book: Book): Book {
+  const fileName = decodeLabel((book.filePath || "").split("/").pop() || "");
+  const parsed = parseStructuredFileName(fileName || book.title || "");
+
+  const cleanAuthor = prettifyNamePart(book.author || "");
+  const nextAuthor = parsed.author || cleanAuthor || "BCU";
+
+  const cleanTitle = prettifyNamePart(book.title || "") || titleFromName(fileName) || "Document";
+  const nextTitle = parsed.title || cleanTitle;
+
+  const inferredYear = parsed.publishedYear
+    || book.publishedYear
+    || extractYear([book.era || "", book.date || "", book.title || "", fileName].join(" "));
+
+  const currentDepartment = cleanDepartmentLabel(book.department || "");
+  const fallbackDepartment = inferDepartmentFromFolderPath(book.folderPath || "");
+  let nextDepartment = currentDepartment && currentDepartment !== "General"
+    ? currentDepartment
+    : fallbackDepartment;
+
+  if (normForCompare(nextDepartment) === normForCompare(nextAuthor)) {
+    nextDepartment = "General";
+  }
+
+  return {
+    ...book,
+    author: nextAuthor,
+    title: nextTitle,
+    publishedYear: inferredYear,
+    era: inferredYear ? String(inferredYear) : (book.era || "Academic Collection"),
+    department: nextDepartment || "General",
+    coverImage: (book.coverImage || "").trim()
+  };
+}
+
+function normalizeBooksForUi(books: Book[]): Book[] {
+  return books.map((book) => normalizeBookForUi(book));
 }
 
 function relativePathSegments(rootPath: string, folderPath: string): string[] {
@@ -674,7 +1133,7 @@ function loadFromCache(faculty: Faculty): Book[] | null {
       return null;
     }
 
-    return parsed.books as Book[];
+    return normalizeBooksForUi(parsed.books as Book[]);
   } catch {
     return null;
   }
@@ -715,7 +1174,7 @@ function loadOaiCache(): Book[] | null {
       return null;
     }
 
-    return parsed.books as Book[];
+    return normalizeBooksForUi(parsed.books as Book[]);
   } catch {
     return null;
   }
@@ -736,14 +1195,58 @@ function saveOaiCache(books: Book[]): void {
   }
 }
 
+function clearOaiSetsCache(): void {
+  try {
+    localStorage.removeItem(OAI_SETS_CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export async function loadCatalogForFaculty(faculty: Faculty, options: CatalogOptions = {}): Promise<Book[]> {
   const { force = false, onProgress } = options;
 
   if (!force) {
-    const cached = loadFromCache(faculty);
-    if (cached) {
-      return cached;
+    // --- NEW: SERVER-SIDE INDEXING PREFERENCE ---
+  try {
+    const serverUrl = `/api/bcu/catalog/${encodeURIComponent(faculty.key)}`;
+    const sRes = await fetch(serverUrl);
+    if (sRes.ok) {
+      const data = await sRes.json();
+      console.log(`[BCU] Loaded ${data.books.length} books from server for ${faculty.label}`);
+      return normalizeBooksForUi(data.books || []);
     }
+    
+    // If not found, try to trigger a server rebuild
+    if (sRes.status === 404) {
+      console.log(`[BCU] Server index missing for ${faculty.label}. Triggering rebuild...`);
+      const rRes = await fetch(`${serverUrl}/rebuild`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: faculty.label, url: faculty.path })
+      });
+      if (rRes.ok) {
+        const rData = await rRes.json();
+        // Now fetch it again or use returned data
+        const nextRes = await fetch(serverUrl);
+        if (nextRes.ok) {
+          const nextData = await nextRes.json();
+          return normalizeBooksForUi(nextData.books || []);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[BCU] Server indexing failed, falling back to local scan:", err);
+  }
+
+  // --- EXISTING LOCAL FALLBACK LOGIC ---
+  const cached = loadFromCache(faculty);
+  if (cached) {
+    return cached;
+  }
+  } else {
+    // Invalidate the OAI sets cache so department hierarchy is re-fetched on rebuild.
+    clearOaiSetsCache();
   }
 
   const queue: string[] = [ensureTrailingSlash(faculty.path)];
@@ -765,6 +1268,9 @@ export async function loadCatalogForFaculty(faculty: Faculty, options: CatalogOp
 
     await Promise.all(batch.map(async (folderPath) => {
       try {
+        // Stagger requests within the batch to reduce burst load on BCU.
+        await new Promise((r) => setTimeout(r, Math.random() * 200));
+
         const html = await fetchDirectoryHtml(folderPath);
         const entries = parseDirectoryListing(html, folderPath);
 
@@ -779,13 +1285,20 @@ export async function loadCatalogForFaculty(faculty: Faculty, options: CatalogOp
           }
 
           const segments = relativePathSegments(faculty.path, folderPath);
-          const author = segments[0] || faculty.label;
-          const department = cleanDepartmentLabel(segments[0] || "General");
-          const year = extractYear([entry.date, ...segments, entry.name].join(" "));
+          const parsedName = parseStructuredFileName(entry.name);
+          const author = parsedName.author || "Autor necunoscut";
+          const rawDept = cleanDepartmentLabel(segments[0] || "");
+          // resolveKnownDepartment returns:
+          //   canonical name  — folder matched a UBB specialization
+          //   "General"       — faculty is in our map but folder didn't match (archival noise / ZZ_*)
+          //   null            — faculty not in our static map → use raw folder name as-is
+          const resolved = resolveKnownDepartment(faculty.label, rawDept);
+          const department = resolved !== null ? resolved : (rawDept || "General");
+          const year = parsedName.publishedYear || extractYear([entry.date, ...segments, entry.name].join(" "));
           const era = year ? String(year) : (segments[1] || "Academic Collection");
           const language = inferLanguageFromText(entry.name);
           const languageSource = language === "Nespecificata" ? "unknown" : "filename";
-          const title = titleFromName(entry.name);
+          const title = parsedName.title || prettifyNamePart(titleFromName(entry.name));
           const location = segments.join(" / ") || "radacina";
           const description = `Document din colectia ${faculty.label}. Departament: ${department}. Locatie: ${location}.`;
 
@@ -817,6 +1330,11 @@ export async function loadCatalogForFaculty(faculty: Faculty, options: CatalogOp
         }
       }
     }));
+
+    // Throttle between batches to avoid 429 rate limiting from BCU server.
+    if (queue.length) {
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
   }
 
   if (books.length === 0) {
@@ -824,7 +1342,7 @@ export async function loadCatalogForFaculty(faculty: Faculty, options: CatalogOp
       const fallbackBooks = await loadCatalogFromOai(faculty, { force, onProgress });
       if (fallbackBooks.length > 0) {
         saveToCache(faculty, fallbackBooks);
-        return fallbackBooks;
+        return normalizeBooksForUi(fallbackBooks);
       }
     } catch {
       // Keep empty result if OAI fallback is unavailable.
@@ -832,12 +1350,90 @@ export async function loadCatalogForFaculty(faculty: Faculty, options: CatalogOp
   }
 
   books.sort((a, b) => a.title.localeCompare(b.title, "ro"));
-  saveToCache(faculty, books);
-  return books;
+  const normalized = normalizeBooksForUi(books);
+  saveToCache(faculty, normalized);
+  return normalized;
 }
 
-export function getBookById(books: Book[], bookId: string): Book | null {
-  return books.find((book) => book.id === bookId) || null;
+export async function searchBooksServer(query: string): Promise<Book[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  const normalizeServerResult = (input: Record<string, unknown>): Book => {
+    const filePath = String(input.filePath || input.file_path || input.id || "").trim();
+    const fileName = decodeLabel(filePath.split("/").pop() || "");
+    const parsed = parseStructuredFileName(fileName || String(input.title || ""));
+
+    const title = parsed.title
+      || prettifyNamePart(String(input.title || ""))
+      || prettifyNamePart(titleFromName(fileName))
+      || "Document";
+
+    const author = parsed.author
+      || prettifyNamePart(String(input.author || ""))
+      || "Autor necunoscut";
+
+    const publishedYear = parsed.publishedYear
+      || Number(input.publishedYear || input.published_year || 0)
+      || extractYear([String(input.date || ""), String(input.era || ""), fileName].join(" "));
+
+    const faculty = prettifyNamePart(String(input.faculty || "")) || "BCU";
+    const department = cleanDepartmentLabel(String(input.department || "General"));
+    const language = normalizeLanguageCode(String(input.language || ""));
+    const rawGenre = input.genre;
+    const genre = Array.isArray(rawGenre)
+      ? rawGenre.map((entry) => String(entry || "")).filter(Boolean)
+      : [];
+    const coverImage = String(input.coverImage || input.cover_image || "").trim();
+    const folderPath = String(input.folderPath || input.folder_path || "").trim();
+    const languageSourceRaw = String(input.languageSource || "").toLowerCase();
+    const languageSource = languageSourceRaw === "metadata"
+      || languageSourceRaw === "filename"
+      || languageSourceRaw === "inferred"
+      || languageSourceRaw === "unknown"
+      ? languageSourceRaw
+      : (language === "Nespecificata" ? "unknown" : "inferred");
+
+    return {
+      id: String(input.id || encodeURIComponent(filePath || title)),
+      title,
+      author,
+      description: String(input.description || `Document indexat pentru ${faculty}.`),
+      coverImage,
+      genre: genre.length > 0 ? genre : [faculty],
+      era: publishedYear ? String(publishedYear) : String(input.era || "Academic Collection"),
+      faculty,
+      department,
+      language,
+      languageSource,
+      publishedYear,
+      folderPath,
+      filePath: filePath || String(input.id || ""),
+      date: String(input.date || "-"),
+      sizeBytes: Number.isFinite(Number(input.sizeBytes)) ? Number(input.sizeBytes) : 0
+    };
+  };
+  
+  try {
+    const res = await fetch(`/api/bcu/search?q=${encodeURIComponent(q)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return Array.isArray(data.books)
+        ? data.books.map((book: Partial<Book>) => normalizeServerResult(book))
+        : [];
+    }
+  } catch (err) {
+    console.error("[BCU] Server search failed:", err);
+  }
+  return [];
+}
+
+export async function triggerGlobalRebuild(): Promise<void> {
+  try {
+    await fetch("/api/bcu/catalog/rebuild-all", { method: "POST" });
+  } catch (err) {
+    console.error("[BCU] Global rebuild trigger failed:", err);
+  }
 }
 
 export function searchBooks(books: Book[], query: string): Book[] {
@@ -848,10 +1444,11 @@ export function searchBooks(books: Book[], query: string): Book[] {
 
   return books.filter((book) => {
     const yearText = book.publishedYear ? String(book.publishedYear) : "";
+    const genreText = Array.isArray(book.genre) ? book.genre.join(" ") : "";
     return (
       book.title.toLowerCase().includes(q) ||
       book.author.toLowerCase().includes(q) ||
-      book.genre.join(" ").toLowerCase().includes(q) ||
+      genreText.toLowerCase().includes(q) ||
       book.era.toLowerCase().includes(q) ||
       (book.language || "").toLowerCase().includes(q) ||
       (book.department || "").toLowerCase().includes(q) ||

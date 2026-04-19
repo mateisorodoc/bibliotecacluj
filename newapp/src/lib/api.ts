@@ -1,4 +1,4 @@
-import type { AdminUser, AppUser, ReadingList, ReadingListItem, ReadingProgress } from "../types";
+import type { AdminUser, AppUser, InviteLink, InviteRequest, PublicStats, ReadingList, ReadingListItem, ReadingProgress } from "../types";
 
 type ApiOptions = RequestInit & { skipJson?: boolean };
 
@@ -187,4 +187,74 @@ export async function deleteAdminUser(userId: number): Promise<void> {
   await apiRequest<{ ok: boolean }>(`/api/admin/users/${userId}`, {
     method: "DELETE"
   });
+}
+
+export async function listMyInvites(): Promise<InviteLink[]> {
+  const result = await apiRequest<{ invites: InviteLink[] }>("/api/user/invites");
+  return result.invites || [];
+}
+
+export async function createInviteLink(input?: { maxUses?: number; expiresInDays?: number }): Promise<InviteLink> {
+  const result = await apiRequest<{ ok: boolean; invite: InviteLink }>("/api/user/invites", {
+    method: "POST",
+    body: JSON.stringify({
+      maxUses: input?.maxUses,
+      expiresInDays: input?.expiresInDays
+    })
+  });
+  return result.invite;
+}
+
+export async function getInviteInfo(token: string): Promise<{
+  token: string;
+  expiresAt?: string | null;
+  maxUses: number;
+  usesCount: number;
+  isActive: boolean;
+}> {
+  const result = await apiRequest<{
+    invite: {
+      token: string;
+      expiresAt?: string | null;
+      maxUses: number;
+      usesCount: number;
+      isActive: boolean;
+    };
+  }>(`/api/invites/${encodeURIComponent(token)}`);
+  return result.invite;
+}
+
+export async function registerFromInvite(token: string, username: string, password: string): Promise<string> {
+  const result = await apiRequest<{ ok: boolean; message: string }>(`/api/invites/${encodeURIComponent(token)}/register`, {
+    method: "POST",
+    body: JSON.stringify({ username, password })
+  });
+  return result.message;
+}
+
+export async function getPendingInviteRequestCount(): Promise<number> {
+  const result = await apiRequest<{ pendingCount: number }>("/api/admin/invite-requests/summary");
+  return Number(result.pendingCount || 0);
+}
+
+export async function listInviteRequests(status?: "pending" | "approved" | "denied"): Promise<InviteRequest[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const result = await apiRequest<{ requests: InviteRequest[] }>(`/api/admin/invite-requests${query}`);
+  return result.requests || [];
+}
+
+export async function reviewInviteRequest(
+  requestId: number,
+  decision: "approve" | "deny",
+  note?: string
+): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/admin/invite-requests/${requestId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ decision, note: note || "" })
+  });
+}
+
+export async function getPublicStats(): Promise<PublicStats> {
+  const result = await apiRequest<{ stats: PublicStats }>("/api/public/stats");
+  return result.stats;
 }

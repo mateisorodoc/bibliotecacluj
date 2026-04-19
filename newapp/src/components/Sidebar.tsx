@@ -9,22 +9,25 @@
   LogOut,
   X,
   Loader2,
-  Users
+  Users,
+  Trash2
 } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
-import { createReadingList, listReadingLists } from "../lib/api";
+import { createReadingList, deleteReadingList, listReadingLists } from "../lib/api";
 import { motion, AnimatePresence } from "motion/react";
 import type { ReadingList } from "../types";
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isCreating, setIsCreating] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingListId, setDeletingListId] = useState<number | null>(null);
   const [readingLists, setReadingLists] = useState<ReadingList[]>([]);
 
   const fetchLists = async () => {
@@ -67,13 +70,44 @@ export default function Sidebar() {
     navigate("/login", { replace: true });
   };
 
+  const handleDeleteList = async (list: ReadingList) => {
+    if (!user || deletingListId !== null) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Stergi colectia \"${list.name}\"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingListId(list.id);
+    try {
+      await deleteReadingList(list.id);
+      await fetchLists();
+
+      if (location.pathname === `/dashboard/lists/${list.id}`) {
+        navigate("/dashboard/library", { replace: true });
+      }
+    } finally {
+      setDeletingListId(null);
+    }
+  };
+
   const menuItems = [
     { label: "Panou", icon: LayoutDashboard, path: "/dashboard" },
     { label: "Biblioteca mea", icon: Library, path: "/dashboard/library" },
     { label: "In lectura", icon: BookOpen, path: "/dashboard/reading" },
     { label: "Istoric", icon: Clock, path: "/dashboard/history" },
     { label: "Wishlist", icon: Star, path: "/dashboard/wishlist" },
-    ...(user?.role === "admin" ? [{ label: "User management", icon: Users, path: "/dashboard/admin-users" }] : [])
+    ...(user?.role === "admin"
+      ? [{
+        label: user.pendingInviteRequests && user.pendingInviteRequests > 0
+          ? `User management (${user.pendingInviteRequests})`
+          : "User management",
+        icon: Users,
+        path: "/dashboard/admin-users"
+      }]
+      : [])
   ];
 
   const createListModal = (
@@ -141,7 +175,7 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="w-64 flex-shrink-0 sticky top-32 h-[calc(100vh-160px)] px-4">
+    <aside className="w-full md:w-64 flex-shrink-0 md:sticky md:top-32 md:h-[calc(100vh-160px)] px-0 md:px-4">
       <div className="space-y-1">
         <p className="px-4 text-[10px] uppercase tracking-[0.2em] font-bold text-ink/30 mb-4">Panou utilizator</p>
         {menuItems.map((item) => (
@@ -163,26 +197,42 @@ export default function Sidebar() {
         ))}
       </div>
 
-      <div className="mt-12 space-y-1">
+      <div className="mt-8 md:mt-12 space-y-1">
         <p className="px-4 text-[10px] uppercase tracking-[0.2em] font-bold text-ink/30 mb-4">Liste de lectura</p>
 
-        <div className="space-y-1 mb-4 max-h-56 overflow-auto pr-1">
+        <div className="space-y-1 mb-4 max-h-64 md:max-h-56 overflow-auto pr-1">
           {readingLists.map((list) => (
-            <NavLink
-              key={list.id}
-              to={`/dashboard/lists/${list.id}`}
-              className={({ isActive }) =>
-                `flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-surface-highest text-primary"
-                    : "text-ink/60 hover:bg-surface-highest/50 hover:text-ink"
-                }`
-              }
-            >
-              <div className="w-1.5 h-1.5 rounded-full bg-ink/10" />
-              <span className="truncate">{list.name}</span>
-              <span className="ml-auto text-[10px] text-ink/30">{list.itemCount}</span>
-            </NavLink>
+            <div key={list.id} className="relative group">
+              <NavLink
+                to={`/dashboard/lists/${list.id}`}
+                className={({ isActive }) =>
+                  `flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    isActive
+                      ? "bg-surface-highest text-primary"
+                      : "text-ink/60 hover:bg-surface-highest/50 hover:text-ink"
+                  }`
+                }
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-ink/10" />
+                <span className="truncate pr-6">{list.name}</span>
+                <span className="ml-auto text-[10px] text-ink/30">{list.itemCount}</span>
+              </NavLink>
+
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleDeleteList(list);
+                }}
+                disabled={deletingListId !== null}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md border border-transparent text-red-600/70 hover:text-red-700 hover:border-red-200 hover:bg-red-50 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
+                aria-label={`Sterge colectia ${list.name}`}
+                title="Sterge colectia"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           ))}
         </div>
 
@@ -197,7 +247,7 @@ export default function Sidebar() {
 
       {typeof document !== "undefined" ? createPortal(createListModal, document.body) : null}
 
-      <div className="absolute bottom-4 left-0 w-full px-4 space-y-2">
+      <div className="mt-8 md:mt-0 md:absolute md:bottom-4 left-0 w-full px-0 md:px-4 space-y-2">
         <NavLink
           to="/dashboard/settings"
           className="flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium text-ink/50 hover:bg-surface-highest hover:text-ink transition-all"

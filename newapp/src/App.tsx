@@ -1,4 +1,4 @@
-﻿import { BrowserRouter as Router, Routes, Route, Link, Outlet, useLocation, Navigate, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, Outlet, useLocation, Navigate, useNavigate, useParams } from "react-router-dom";
 import React, { useEffect, useMemo, useState } from "react";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
@@ -7,26 +7,32 @@ import BookDetailsPage from "./components/BookDetailsPage";
 import LoginPage from "./components/LoginPage";
 import ProfilePage from "./components/ProfilePage";
 import CoverImage from "./components/CoverImage";
+import InviteRegistrationPage from "./components/InviteRegistrationPage";
 import { useAuth } from "./context/AuthContext";
 import { useLibrary } from "./context/LibraryContext";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowRight, Instagram, Twitter, Mail, BookOpen, Users, Building2 } from "lucide-react";
+import { ArrowRight, Users, Building2, Trash2 } from "lucide-react";
 import {
   createAdminUser,
+  deleteReadingList,
   deleteAdminUser,
+  getPublicStats,
   listAdminUsers,
+  listInviteRequests,
   listHistory,
   listProgress,
   listReadingListItems,
   listReadingLists,
   listWishlist,
+  removeReadingListItem,
+  reviewInviteRequest,
   updateAdminUser
 } from "./lib/api";
-import { loadCatalogForFaculty, searchBooks } from "./lib/bcu";
-import type { AdminUser, Book, Faculty, ReadingListItem, ReadingProgress } from "./types";
+import { loadCatalogForFaculty } from "./lib/bcu";
+import type { AdminUser, Book, Faculty, InviteRequest, ReadingListItem, ReadingProgress } from "./types";
 
-const MULTI_FACULTY_MODE_KEY = "bcu_multi_faculty_mode_v1";
-const MULTI_FACULTY_SELECTION_KEY = "bcu_multi_faculty_selection_v1";
+const EXPLORE_CACHE_TTL_MS = 1000 * 60 * 10;
+let exploreBooksCache: { signature: string; savedAt: number; books: Book[] } | null = null;
 
 function buildGenericTileImage(kind: "faculty" | "department"): string {
   const label = kind === "faculty" ? "FACULTATE" : "DEPARTAMENT";
@@ -155,6 +161,9 @@ function DashboardLayout() {
 function BookCard({ book }: { book: Book }) {
   const year = book.publishedYear || Number.parseInt(book.era, 10) || undefined;
   const displayTitle = toDisplayTitle(book.title);
+  const collectionLabel = Array.isArray(book.genre) && book.genre.length > 0
+    ? book.genre[0]
+    : (book.faculty || "BCU");
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="group">
@@ -168,7 +177,7 @@ function BookCard({ book }: { book: Book }) {
           />
           <div className="absolute inset-0 bg-ink/20 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
-        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-ink/40 mb-2">{book.genre[0]}</p>
+        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-ink/40 mb-2">{collectionLabel}</p>
         <h3
           title={displayTitle}
           className="font-serif text-xl sm:text-2xl font-bold text-ink leading-tight mb-2 group-hover:text-primary transition-colors whitespace-normal break-words [overflow-wrap:anywhere]"
@@ -187,23 +196,67 @@ function BookCard({ book }: { book: Book }) {
 }
 
 function HomePage() {
-  const { books, activeFaculty, statusLine } = useLibrary();
+  const { books, faculties } = useLibrary();
   const featured = books.slice(0, 4);
+  const heroImage = "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1400&q=80";
+  const [stats, setStats] = useState({
+    totalDocuments: 0,
+    totalFaculties: 0,
+    totalDepartments: 0,
+    totalUsers: 0,
+    totalAccesses: 0
+  });
+
+  useEffect(() => {
+    getPublicStats()
+      .then((response) => setStats(response))
+      .catch(() => {
+        setStats({
+          totalDocuments: 0,
+          totalFaculties: 0,
+          totalDepartments: 0,
+          totalUsers: 0,
+          totalAccesses: 0
+        });
+      });
+  }, []);
+
+  const statCards = [
+    { label: "Documente", value: stats.totalDocuments },
+    { label: "Facultati", value: faculties.length || stats.totalFaculties },
+    { label: "Departamente", value: stats.totalDepartments },
+    { label: "Users", value: stats.totalUsers },
+    { label: "Accesari totale", value: stats.totalAccesses }
+  ];
+
+  const formatNumber = (value: number) => new Intl.NumberFormat("ro-RO").format(value || 0);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="bg-surface-base">
-      <section className="relative h-[90vh] flex items-center overflow-hidden px-6 md:px-12">
+      <section className="relative min-h-[90vh] flex items-center overflow-hidden px-6 md:px-12 py-12">
         <div className="max-w-[1440px] mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.8 }} className="z-10">
             <span className="font-sans text-xs uppercase tracking-[0.4em] font-bold text-primary mb-6 block">Biblioteca Alternativa Cluj</span>
             <h1 className="text-6xl md:text-8xl font-serif font-bold text-ink mb-8 leading-[0.95] tracking-tight">
-              Descopera patrimoniul <br />
-              <span className="italic font-normal">academiei clujene.</span>
+              Acces liber la carti <br />
+              <span className="italic font-normal">pentru intreaga comunitate.</span>
             </h1>
-            <p className="max-w-md text-lg md:text-xl font-serif text-ink/60 italic leading-relaxed mb-4">
-              Search digital universitar cu acces la mii de documente, periodice si colectii istorice.
+            <p className="max-w-xl text-lg md:text-xl font-serif text-ink/60 italic leading-relaxed mb-4">
+              Aceasta platforma este o alternativa la Biblioteca Centrala Universitara Lucian Blaga Cluj-Napoca, construita pentru acces mai usor, mai rapid si deschis tuturor.
             </p>
-            <p className="max-w-md text-sm text-ink/50 mb-10">{statusLine}</p>
+            <p className="max-w-xl text-base text-ink/55 leading-relaxed mb-4">
+              Scopul este ca orice persoana sa poata descoperi mai simplu cartile academice, nu doar studentii UBB.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-10 max-w-xl">
+              {statCards.map((card) => (
+                <div key={card.label} className="rounded-xl border border-ink/10 bg-white/80 px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-ink/45">{card.label}</p>
+                  <p className="mt-1 text-xl font-serif font-bold text-ink">{formatNumber(card.value)}</p>
+                </div>
+              ))}
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4">
               <Link to="/search" className="px-10 py-5 bg-ink text-on-primary font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:bg-primary transition-all flex items-center justify-center group">
                 Intra in Search <ArrowRight size={16} className="ml-3 group-hover:translate-x-1 transition-transform" />
@@ -214,21 +267,23 @@ function HomePage() {
             </div>
           </motion.div>
 
-          <div className="hidden lg:flex relative h-full items-center justify-end">
-            <motion.div initial={{ opacity: 0, scale: 0.9, rotate: 2 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 1, delay: 0.2 }} className="w-[120%] h-[700px] relative">
+          <div className="relative h-full items-center justify-end">
+            <motion.div initial={{ opacity: 0, scale: 0.9, rotate: 2 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 1, delay: 0.2 }} className="w-full h-[420px] md:h-[520px] lg:h-[700px] relative">
               <div className="absolute inset-0 bg-primary/10 rounded-[100px] -rotate-6 blur-3xl opacity-30" />
               <div className="relative h-full aspect-[4/5] mx-auto shadow-2xl rounded-2xl overflow-hidden group">
-                <CoverImage
-                  src={featured[0]?.coverImage || "https://picsum.photos/seed/library_hero/1200/1500"}
-                  title={featured[0]?.title || "Biblioteca Alternativa Cluj"}
-                  seed={featured[0]?.id || "library_hero"}
+                <img
+                  src={heroImage}
+                  alt="Oameni intr-o biblioteca"
                   className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-1000"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-transparent to-transparent flex items-end p-12">
-                  <div className="text-on-primary">
-                    <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-60 mb-2">Active Faculty</p>
-                    <h3 className="text-3xl font-serif font-bold italic tracking-tight">{activeFaculty?.label || "Loading..."}</h3>
-                  </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-ink/55 via-transparent to-transparent flex items-end p-6 md:p-10">
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex items-center gap-2 rounded-full bg-white/90 text-ink px-5 py-2.5 text-[10px] md:text-xs uppercase tracking-[0.2em] font-bold hover:bg-white transition-colors shadow-lg"
+                  >
+                    Invita un prieten
+                    <ArrowRight size={14} />
+                  </Link>
                 </div>
               </div>
             </motion.div>
@@ -240,8 +295,8 @@ function HomePage() {
         <div className="max-w-[1440px] mx-auto px-6 md:px-12">
           <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-6">
             <div>
-              <h2 className="text-4xl font-serif font-bold text-ink italic mb-4 tracking-tight">Recomandari din facultatea curenta</h2>
-              <p className="text-ink/60 font-sans tracking-wide">{activeFaculty?.label || "Search"}</p>
+              <h2 className="text-4xl font-serif font-bold text-ink italic mb-4 tracking-tight">Recomandari din catalogul public</h2>
+              <p className="text-ink/60 font-sans tracking-wide">Documente populare in index</p>
             </div>
             <Link to="/search" className="text-xs uppercase font-bold tracking-widest text-primary hover:opacity-70 flex items-center pb-2 border-b border-primary/20">
               Exploreaza Colectia <ArrowRight size={14} className="ml-2" />
@@ -276,162 +331,19 @@ function CatalogPage() {
     setFacultyKey,
     filteredBooks,
     loading,
-    indexing,
-    progressPercent,
     statusLine,
     searchQuery,
     setSearchQuery,
-    refreshCatalog,
     error
   } = useLibrary();
-
-  const [multiFacultyMode, setMultiFacultyMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(MULTI_FACULTY_MODE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [selectedFacultyKeys, setSelectedFacultyKeys] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(MULTI_FACULTY_SELECTION_KEY);
-      if (!raw) {
-        return [];
-      }
-
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
-    } catch {
-      return [];
-    }
-  });
-  const [multiFacultyBooks, setMultiFacultyBooks] = useState<Book[]>([]);
-  const [multiLoading, setMultiLoading] = useState(false);
-  const [multiProgressPercent, setMultiProgressPercent] = useState(0);
-  const [multiStatusLine, setMultiStatusLine] = useState("Selecteaza facultatile pentru explorare extinsa.");
-  const [multiError, setMultiError] = useState<string | null>(null);
 
   const [sortBy, setSortBy] = useState("title");
   const [yearFilter, setYearFilter] = useState("all");
   const [authorFilter, setAuthorFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [departmentFacultyKey, setDepartmentFacultyKey] = useState("");
   const [visibleCount, setVisibleCount] = useState(24);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(MULTI_FACULTY_MODE_KEY, multiFacultyMode ? "1" : "0");
-    } catch {
-      // Optional persistence.
-    }
-  }, [multiFacultyMode]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MULTI_FACULTY_SELECTION_KEY, JSON.stringify(selectedFacultyKeys));
-    } catch {
-      // Optional persistence.
-    }
-  }, [selectedFacultyKeys]);
-
-  useEffect(() => {
-    if (!faculties.length) {
-      return;
-    }
-
-    const valid = selectedFacultyKeys.filter((key) => faculties.some((faculty) => faculty.key === key));
-    if (valid.length !== selectedFacultyKeys.length) {
-      setSelectedFacultyKeys(valid);
-    }
-  }, [faculties, selectedFacultyKeys]);
-
-  useEffect(() => {
-    if (selectedFacultyKeys.length > 0) {
-      return;
-    }
-
-    if (activeFaculty?.key) {
-      setSelectedFacultyKeys([activeFaculty.key]);
-      return;
-    }
-
-    if (faculties.length > 0) {
-      setSelectedFacultyKeys([faculties[0].key]);
-    }
-  }, [selectedFacultyKeys.length, activeFaculty?.key, faculties]);
-
-  const selectedFaculties = useMemo(() => {
-    return faculties.filter((faculty) => selectedFacultyKeys.includes(faculty.key));
-  }, [faculties, selectedFacultyKeys]);
-
-  const refreshMultiCatalog = async (force = false) => {
-    if (!selectedFaculties.length) {
-      return;
-    }
-
-    setMultiLoading(true);
-    setMultiError(null);
-    setMultiProgressPercent(0);
-    setMultiStatusLine(`Se incarca ${selectedFaculties.length} facultati...`);
-
-    try {
-      const loaded = await loadBooksForFaculties(selectedFaculties, force, (done, total, label) => {
-        const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-        setMultiProgressPercent(percent);
-        setMultiStatusLine(`Indexare multi-facultate: ${done}/${total} (${label})`);
-      });
-
-      setMultiFacultyBooks(loaded);
-      setMultiProgressPercent(100);
-      setMultiStatusLine(`Gata: ${loaded.length} documente din ${selectedFaculties.length} facultati.`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Nu am putut incarca facultatile selectate.";
-      setMultiError(message);
-      setMultiStatusLine("Indexarea multi-facultate a esuat.");
-    } finally {
-      setMultiLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!multiFacultyMode) {
-      return;
-    }
-
-    refreshMultiCatalog(false);
-  }, [multiFacultyMode, selectedFacultyKeys.join("|"), faculties.length]);
-
-  useEffect(() => {
-    if (!multiFacultyMode) {
-      setDepartmentFacultyKey("");
-      return;
-    }
-
-    if (!selectedFacultyKeys.length) {
-      setDepartmentFacultyKey("");
-      return;
-    }
-
-    setDepartmentFacultyKey((current) => {
-      if (current && selectedFacultyKeys.includes(current)) {
-        return current;
-      }
-
-      if (activeFaculty?.key && selectedFacultyKeys.includes(activeFaculty.key)) {
-        return activeFaculty.key;
-      }
-
-      return selectedFacultyKeys[0];
-    });
-  }, [multiFacultyMode, selectedFacultyKeys.join("|"), activeFaculty?.key]);
-
-  const baseBooks = useMemo(() => {
-    if (!multiFacultyMode) {
-      return filteredBooks;
-    }
-
-    return searchBooks(multiFacultyBooks, searchQuery);
-  }, [multiFacultyMode, filteredBooks, multiFacultyBooks, searchQuery]);
+  const baseBooks = useMemo(() => filteredBooks, [filteredBooks]);
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -444,24 +356,15 @@ function CatalogPage() {
 
     return ["all", ...Array.from(set).sort((a, b) => b - a).map(String)];
   }, [baseBooks]);
-
   const authors = useMemo(() => {
     const set = new Set(baseBooks.map((book) => (book.author || "").trim()).filter(Boolean));
     return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b, "ro"))];
   }, [baseBooks]);
 
   const departments = useMemo(() => {
-    const scopedFacultyLabel = multiFacultyMode && departmentFacultyKey
-      ? faculties.find((faculty) => faculty.key === departmentFacultyKey)?.label
-      : null;
-
-    const source = scopedFacultyLabel
-      ? baseBooks.filter((book) => (book.faculty || "").trim() === scopedFacultyLabel)
-      : baseBooks;
-
-    const set = new Set(source.map((book) => (book.department || "General").trim()));
+    const set = new Set(baseBooks.map((book) => (book.department || "General").trim()));
     return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b, "ro"))];
-  }, [baseBooks, faculties, multiFacultyMode, departmentFacultyKey]);
+  }, [baseBooks]);
 
   useEffect(() => {
     if (departmentFilter === "all") {
@@ -474,10 +377,6 @@ function CatalogPage() {
   }, [departments, departmentFilter]);
 
   const displayBooks = useMemo(() => {
-    const scopedFacultyLabel = multiFacultyMode && departmentFacultyKey
-      ? faculties.find((faculty) => faculty.key === departmentFacultyKey)?.label
-      : null;
-
     const filtered = baseBooks.filter((book) => {
       const bookYear = String(book.publishedYear || Number.parseInt(book.era, 10) || "");
       const bookDepartment = (book.department || "General").trim();
@@ -485,8 +384,7 @@ function CatalogPage() {
       return (
         (yearFilter === "all" || bookYear === yearFilter) &&
         (authorFilter === "all" || book.author === authorFilter) &&
-        (departmentFilter === "all" || bookDepartment === departmentFilter) &&
-        (!scopedFacultyLabel || (book.faculty || "").trim() === scopedFacultyLabel)
+        (departmentFilter === "all" || bookDepartment === departmentFilter)
       );
     });
 
@@ -507,27 +405,11 @@ function CatalogPage() {
       sorted.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     }
     return sorted;
-  }, [baseBooks, yearFilter, authorFilter, departmentFilter, sortBy, faculties, multiFacultyMode, departmentFacultyKey]);
+  }, [baseBooks, yearFilter, authorFilter, departmentFilter, sortBy]);
 
   useEffect(() => {
     setVisibleCount(24);
-  }, [activeFaculty?.key, searchQuery, sortBy, yearFilter, authorFilter, departmentFilter, multiFacultyMode, selectedFacultyKeys.join("|"), departmentFacultyKey]);
-
-  const catalogStatusLine = multiFacultyMode ? multiStatusLine : statusLine;
-  const catalogLoading = multiFacultyMode ? multiLoading : loading;
-  const catalogError = multiFacultyMode ? multiError : error;
-  const refreshLabel = multiFacultyMode
-    ? (multiLoading ? `Indexare ${multiProgressPercent}%` : "Reconstruieste selectie")
-    : (indexing ? `Indexare ${progressPercent}%` : "Reconstruieste index");
-
-  const handleRefresh = () => {
-    if (multiFacultyMode) {
-      refreshMultiCatalog(true);
-      return;
-    }
-
-    refreshCatalog(true);
-  };
+  }, [activeFaculty?.key, searchQuery, sortBy, yearFilter, authorFilter, departmentFilter]);
 
   const hasSecondaryFilters = yearFilter !== "all"
     || authorFilter !== "all"
@@ -539,133 +421,53 @@ function CatalogPage() {
     setDepartmentFilter("all");
   };
 
-  const toggleSelectedFacultyKey = (key: string) => {
-    setSelectedFacultyKeys((current) => {
-      if (current.includes(key)) {
-        if (current.length === 1) {
-          return current;
-        }
-        return current.filter((entry) => entry !== key);
-      }
-
-      return [...current, key];
-    });
-  };
-
-  const selectAllFaculties = () => {
-    setSelectedFacultyKeys(faculties.map((faculty) => faculty.key));
-  };
-
-  const selectOnlyActiveFaculty = () => {
-    if (activeFaculty?.key) {
-      setSelectedFacultyKeys([activeFaculty.key]);
-      return;
-    }
-
-    if (faculties.length > 0) {
-      setSelectedFacultyKeys([faculties[0].key]);
-    }
-  };
-
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="max-w-[1440px] mx-auto px-6 md:px-12 py-20">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-8">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }} className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-12 py-12 md:py-20">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-10 gap-5 md:gap-8">
         <div>
-          <h1 className="text-5xl font-serif font-bold text-ink mb-2">Biblioteca Alternativa Cluj</h1>
-          <p className="text-ink/60 font-serif italic text-xl leading-relaxed">{catalogStatusLine}</p>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-ink mb-2">Biblioteca Alternativa Cluj</h1>
+          <p className="text-ink/60 font-serif italic text-base sm:text-lg md:text-xl leading-relaxed">{statusLine}</p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => setMultiFacultyMode((current) => !current)}
-            className={`px-4 py-2 rounded-md text-xs uppercase tracking-widest font-bold border transition-colors ${multiFacultyMode ? "bg-primary text-white border-primary" : "border-ink/20 text-ink/70"}`}
-          >
-            {multiFacultyMode ? "Mod multi-facultate activ" : "Activeaza multi-facultate"}
-          </button>
-          <button onClick={handleRefresh} disabled={catalogLoading || indexing} className="px-4 py-2 rounded-md bg-ink text-white text-xs uppercase tracking-widest font-bold disabled:opacity-50">
-            {refreshLabel}
-          </button>
+        <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
           <button
             onClick={clearSecondaryFilters}
             disabled={!hasSecondaryFilters}
-            className="px-4 py-2 rounded-md border border-ink/20 text-ink/70 text-xs uppercase tracking-widest font-bold disabled:opacity-40"
+            className="w-full md:w-auto min-h-[44px] px-4 py-2 rounded-md border border-ink/20 text-ink/70 text-xs uppercase tracking-widest font-bold disabled:opacity-40"
           >
             Reset filtre
           </button>
         </div>
       </div>
 
-      {catalogError ? (
+      {error ? (
         <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {catalogError}
+          {error}
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
-        {multiFacultyMode ? (
-          <div className="space-y-3 lg:col-span-3 rounded-xl border border-ink/10 bg-surface-low p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-[10px] uppercase tracking-widest font-bold text-ink/45">
-                Selecteaza facultatile pentru cautare ({selectedFacultyKeys.length} active)
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={selectOnlyActiveFaculty}
-                  className="px-3 py-1 rounded-md border border-ink/20 text-[10px] uppercase tracking-widest font-bold text-ink/65"
-                >
-                  Doar facultatea curenta
-                </button>
-                <button
-                  type="button"
-                  onClick={selectAllFaculties}
-                  className="px-3 py-1 rounded-md border border-ink/20 text-[10px] uppercase tracking-widest font-bold text-ink/65"
-                >
-                  Selecteaza toate
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {faculties.map((faculty) => {
-                const isSelected = selectedFacultyKeys.includes(faculty.key);
-                return (
-                  <button
-                    key={faculty.key}
-                    type="button"
-                    onClick={() => toggleSelectedFacultyKey(faculty.key)}
-                    className={`text-left rounded-md border px-3 py-2 text-sm transition-colors ${isSelected ? "border-primary bg-white text-ink" : "border-ink/15 text-ink/60 hover:border-ink/35"}`}
-                  >
-                    {isSelected ? "● " : "○ "}
-                    {faculty.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <select
-            value={activeFaculty?.key || ""}
-            onChange={(event) => setFacultyKey(event.target.value)}
-            className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-widest text-ink/60 cursor-pointer"
-          >
-            {faculties.map((faculty) => (
-              <option key={faculty.key} value={faculty.key}>{faculty.label}</option>
-            ))}
-          </select>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-8 md:mb-10">
+        <select
+          value={activeFaculty?.key || ""}
+          onChange={(event) => setFacultyKey(event.target.value)}
+          className="min-h-[44px] bg-white/70 border border-ink/15 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/70 cursor-pointer"
+        >
+          {faculties.map((faculty) => (
+            <option key={faculty.key} value={faculty.key}>{faculty.label}</option>
+          ))}
+        </select>
 
         <input
           type="text"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder={multiFacultyMode ? "Cauta in facultatile selectate (titlu, autor, departament)..." : "Cauta titlu, autor..."}
-          className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/60"
+          placeholder="Cauta titlu, autor, departament..."
+          className="min-h-[44px] bg-white/70 border border-ink/15 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/70"
         />
 
         <select
           value={yearFilter}
           onChange={(event) => setYearFilter(event.target.value)}
-          className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-widest text-ink/60 cursor-pointer"
+          className="min-h-[44px] bg-white/70 border border-ink/15 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/70 cursor-pointer"
         >
           {years.map((year) => (
             <option key={year} value={year}>{year === "all" ? "Toti anii" : year}</option>
@@ -675,29 +477,17 @@ function CatalogPage() {
         <select
           value={authorFilter}
           onChange={(event) => setAuthorFilter(event.target.value)}
-          className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-widest text-ink/60 cursor-pointer"
+          className="min-h-[44px] bg-white/70 border border-ink/15 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/70 cursor-pointer"
         >
           {authors.map((author) => (
             <option key={author} value={author}>{author === "all" ? "Toti autorii / colectiile" : author}</option>
           ))}
         </select>
 
-        {multiFacultyMode && selectedFaculties.length > 1 ? (
-          <select
-            value={departmentFacultyKey}
-            onChange={(event) => setDepartmentFacultyKey(event.target.value)}
-            className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-widest text-ink/60 cursor-pointer"
-          >
-            {selectedFaculties.map((faculty) => (
-              <option key={faculty.key} value={faculty.key}>{`Departamente: ${faculty.label}`}</option>
-            ))}
-          </select>
-        ) : null}
-
         <select
           value={departmentFilter}
           onChange={(event) => setDepartmentFilter(event.target.value)}
-          className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-widest text-ink/60 cursor-pointer"
+          className="min-h-[44px] bg-white/70 border border-ink/15 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/70 cursor-pointer"
         >
           {departments.map((department) => (
             <option key={department} value={department}>{department === "all" ? "Toate departamentele" : department}</option>
@@ -707,7 +497,7 @@ function CatalogPage() {
         <select
           value={sortBy}
           onChange={(event) => setSortBy(event.target.value)}
-          className="bg-transparent border-b border-ink/20 py-2 px-4 focus:outline-none focus:border-primary text-sm font-sans tracking-widest text-ink/60 cursor-pointer"
+          className="min-h-[44px] bg-white/70 border border-ink/15 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/70 cursor-pointer"
         >
           <option value="author">Sorteaza dupa autor</option>
           <option value="title">Sorteaza dupa titlu</option>
@@ -717,22 +507,7 @@ function CatalogPage() {
         </select>
       </div>
 
-      {multiFacultyMode ? (
-        <div className="mb-10 rounded-xl border border-ink/10 bg-surface-low p-4">
-          <p className="text-[10px] uppercase tracking-widest font-bold text-ink/45 mb-3">
-            Facultati selectate ({selectedFaculties.length})
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {selectedFaculties.map((faculty) => (
-              <span key={faculty.key} className="px-3 py-1 rounded-full bg-white border border-ink/10 text-xs text-ink/70">
-                {faculty.label}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {catalogLoading ? (
+      {loading ? (
         <div className="py-24 text-center text-ink/50 italic">Search se incarca...</div>
       ) : (
         <>
@@ -764,96 +539,54 @@ function CatalogPage() {
   );
 }
 
-function AuthorsPage() {
-  const navigate = useNavigate();
-  const { books, faculties, setSearchQuery } = useLibrary();
-  const [allBooks, setAllBooks] = useState<Book[]>([]);
-  const [loadingAll, setLoadingAll] = useState(false);
-
-  useEffect(() => {
-    if (!faculties.length) {
-      return;
-    }
-
-    setLoadingAll(true);
-    loadBooksForFaculties(faculties, false)
-      .then((loaded) => setAllBooks(loaded))
-      .catch(() => setAllBooks([]))
-      .finally(() => setLoadingAll(false));
-  }, [faculties.length]);
-
-  const sourceBooks = allBooks.length ? allBooks : books;
-
-  const authors = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const book of sourceBooks) {
-      const key = (book.author || "Necunoscut").trim() || "Necunoscut";
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 120);
-  }, [sourceBooks]);
-
-  const years = useMemo(() => {
-    const counts = new Map<number, number>();
-    for (const book of sourceBooks) {
-      const year = book.publishedYear || Number.parseInt(book.era, 10);
-      if (!Number.isFinite(year) || year <= 0) {
-        continue;
-      }
-
-      counts.set(year, (counts.get(year) || 0) + 1);
-    }
-
-    return Array.from(counts.entries())
-      .map(([year, count]) => ({ year, count }))
-      .sort((a, b) => b.year - a.year)
-      .slice(0, 120);
-  }, [sourceBooks]);
-
-  const goToSearch = (term: string) => {
-    setSearchQuery(term);
-    navigate("/search");
-  };
-
-  return (
-    <div className="max-w-[1440px] mx-auto px-6 md:px-12 py-20">
-      <h1 className="text-5xl font-serif font-bold text-ink mb-3">Autori si Colectii</h1>
-      <p className="text-ink/60 font-serif italic mb-12">Navigheaza rapid dupa autor sau an (click pentru a deschide filtrat in Search).</p>
-      {loadingAll ? <p className="text-sm text-ink/40 mb-6">Se agrega automat indexul din toate facultatile...</p> : null}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {authors.map((entry) => (
-          <button key={entry.name} onClick={() => goToSearch(entry.name)} className="rounded-xl border border-ink/10 bg-surface-low p-4 flex items-center justify-between text-left hover:border-primary/30 hover:bg-white transition-colors">
-            <span className="font-serif text-ink">{entry.name}</span>
-            <span className="text-xs uppercase tracking-widest font-bold text-ink/40">{entry.count} doc</span>
-          </button>
-        ))}
-      </div>
-
-      <h2 className="text-3xl font-serif font-bold text-ink mt-16 mb-6">Navigare dupa ani</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {years.map((entry) => (
-          <button key={entry.year} onClick={() => goToSearch(String(entry.year))} className="rounded-lg border border-ink/10 bg-white px-4 py-3 text-left hover:border-primary/30 transition-colors">
-            <p className="font-serif text-xl text-ink">{entry.year}</p>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-ink/40">{entry.count} doc</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function ExplorePage() {
   const navigate = useNavigate();
   const { faculties, setFacultyKey, setSearchQuery } = useLibrary();
   const [allBooks, setAllBooks] = useState<Book[]>([]);
+  const [publicStats, setPublicStats] = useState({
+    totalDocuments: 0,
+    totalFaculties: 0,
+    totalDepartments: 0,
+    totalUsers: 0,
+    totalAccesses: 0
+  });
   const [loadingAll, setLoadingAll] = useState(false);
   const [status, setStatus] = useState("Pregatire explorare...");
+  const [exploreQuery, setExploreQuery] = useState("");
+
+  const facultySignature = useMemo(() => {
+    return faculties.map((entry) => entry.key).sort((a, b) => a.localeCompare(b, "ro")).join("|");
+  }, [faculties]);
+
+  useEffect(() => {
+    getPublicStats()
+      .then((stats) => setPublicStats(stats))
+      .catch(() => {
+        setPublicStats({
+          totalDocuments: 0,
+          totalFaculties: 0,
+          totalDepartments: 0,
+          totalUsers: 0,
+          totalAccesses: 0
+        });
+      });
+  }, []);
 
   useEffect(() => {
     if (!faculties.length) {
+      setAllBooks([]);
+      setStatus("Nu exista facultati disponibile pentru explorare.");
+      return;
+    }
+
+    if (
+      exploreBooksCache
+      && exploreBooksCache.signature === facultySignature
+      && (Date.now() - exploreBooksCache.savedAt) < EXPLORE_CACHE_TTL_MS
+    ) {
+      setAllBooks(exploreBooksCache.books);
+      setStatus("Explorare din cache.");
       return;
     }
 
@@ -865,16 +598,33 @@ function ExplorePage() {
     })
       .then((loaded) => {
         setAllBooks(loaded);
-        setStatus(`Explorare gata: ${loaded.length} documente.`);
+        exploreBooksCache = {
+          signature: facultySignature,
+          savedAt: Date.now(),
+          books: loaded
+        };
+        setStatus("Explorare gata.");
       })
       .catch(() => {
         setAllBooks([]);
         setStatus("Explorarea globala nu a putut fi incarcata.");
       })
       .finally(() => setLoadingAll(false));
-  }, [faculties.length]);
+  }, [faculties, facultySignature]);
 
-  const exploreFilteredBooks = useMemo(() => allBooks, [allBooks]);
+  const exploreFilteredBooks = useMemo(() => {
+    const query = exploreQuery.trim().toLowerCase();
+    if (!query) {
+      return allBooks;
+    }
+
+    return allBooks.filter((book) => (
+      (book.title || "").toLowerCase().includes(query)
+      || (book.author || "").toLowerCase().includes(query)
+      || (book.faculty || "").toLowerCase().includes(query)
+      || (book.department || "").toLowerCase().includes(query)
+    ));
+  }, [allBooks, exploreQuery]);
 
   const facultyStats = useMemo(() => {
     const counts = new Map<string, number>();
@@ -888,7 +638,7 @@ function ExplorePage() {
       .sort((a, b) => b.count - a.count);
   }, [exploreFilteredBooks]);
 
-  const departmentStats = useMemo(() => {
+  const allDepartmentStats = useMemo(() => {
     const counts = new Map<string, { faculty: string; department: string; count: number }>();
 
     for (const book of exploreFilteredBooks) {
@@ -903,8 +653,10 @@ function ExplorePage() {
       }
     }
 
-    return Array.from(counts.values()).sort((a, b) => b.count - a.count).slice(0, 180);
+    return Array.from(counts.values()).sort((a, b) => b.count - a.count);
   }, [exploreFilteredBooks]);
+
+  const departmentStats = useMemo(() => allDepartmentStats.slice(0, 200), [allDepartmentStats]);
 
   const uniqueAuthorsCount = useMemo(() => {
     return new Set(exploreFilteredBooks.map((book) => (book.author || "").trim()).filter(Boolean)).size;
@@ -915,7 +667,7 @@ function ExplorePage() {
     if (target) {
       setFacultyKey(target.key);
     }
-    setSearchQuery("");
+    setSearchQuery(exploreQuery.trim());
     navigate("/search");
   };
 
@@ -933,13 +685,20 @@ function ExplorePage() {
       <div>
         <h1 className="text-4xl sm:text-5xl font-serif font-bold text-ink mb-3">Explorare Facultati si Departamente</h1>
         <p className="text-ink/60 font-serif italic">Navigheaza pe intreaga colectie. Selectezi cardul si intri direct in Search filtrat.</p>
+        <input
+          type="text"
+          value={exploreQuery}
+          onChange={(event) => setExploreQuery(event.target.value)}
+          placeholder="Filtreaza rapid facultati/departamente..."
+          className="mt-5 w-full max-w-xl bg-transparent border-b border-ink/20 py-2 px-1 focus:outline-none focus:border-primary text-sm font-sans tracking-wide text-ink/60"
+        />
         <p className="text-sm text-ink/40 mt-3">{status}</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <div className="rounded-xl border border-ink/10 bg-surface-low p-4 sm:p-5">
           <p className="text-[10px] uppercase tracking-widest font-bold text-ink/40">Documente totale</p>
-          <p className="font-serif text-2xl sm:text-3xl text-ink mt-2">{exploreFilteredBooks.length}</p>
+          <p className="font-serif text-2xl sm:text-3xl text-ink mt-2">{publicStats.totalDocuments || exploreFilteredBooks.length}</p>
         </div>
         <div className="rounded-xl border border-ink/10 bg-surface-low p-4 sm:p-5">
           <p className="text-[10px] uppercase tracking-widest font-bold text-ink/40">Autori unici</p>
@@ -947,7 +706,7 @@ function ExplorePage() {
         </div>
         <div className="rounded-xl border border-ink/10 bg-surface-low p-4 sm:p-5 col-span-2 lg:col-span-1">
           <p className="text-[10px] uppercase tracking-widest font-bold text-ink/40">Departamente identificate</p>
-          <p className="font-serif text-2xl sm:text-3xl text-ink mt-2">{departmentStats.length}</p>
+          <p className="font-serif text-2xl sm:text-3xl text-ink mt-2">{publicStats.totalDepartments || allDepartmentStats.length}</p>
         </div>
       </div>
 
@@ -964,6 +723,7 @@ function ExplorePage() {
             </button>
           ))}
         </div>
+        {facultyStats.length === 0 ? <p className="mt-4 text-sm text-ink/50">Nu exista facultati pentru filtrul curent.</p> : null}
       </section>
 
       <section>
@@ -980,6 +740,7 @@ function ExplorePage() {
             </button>
           ))}
         </div>
+        {departmentStats.length === 0 ? <p className="mt-4 text-sm text-ink/50">Nu exista departamente pentru filtrul curent.</p> : null}
       </section>
 
       {loadingAll ? <div className="py-8 text-center text-ink/50 italic">Se agrega datele pentru explorare extinsa...</div> : null}
@@ -993,7 +754,7 @@ function toBookFromProgress(progress: ReadingProgress): Book {
     title: progress.title,
     author: "BCU",
     description: "Saved from user history.",
-    coverImage: progress.coverImage || `https://picsum.photos/seed/${encodeURIComponent(progress.bookId)}/480/720`,
+    coverImage: progress.coverImage || "",
     genre: ["Personal"],
     era: progress.status,
     faculty: "BCU",
@@ -1011,7 +772,7 @@ function toBookFromListItem(item: ReadingListItem): Book {
     title: item.title,
     author: item.author || "BCU",
     description: "Saved to reading list.",
-    coverImage: item.coverImage || `https://picsum.photos/seed/${encodeURIComponent(item.bookId)}/480/720`,
+    coverImage: item.coverImage || "",
     genre: ["List"],
     era: "Collection",
     faculty: "BCU",
@@ -1078,17 +839,24 @@ function DashboardWishlistPage() {
 
 function DashboardListPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [title, setTitle] = useState("Lista de lectura");
   const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyBookId, setBusyBookId] = useState<string | null>(null);
+  const [deletingList, setDeletingList] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const listId = Number(id);
     if (!Number.isInteger(listId) || listId <= 0) {
       setBooks([]);
+      setLoading(false);
       return;
     }
 
     const load = async () => {
+      setLoading(true);
       const lists = await listReadingLists();
       const current = lists.find((entry) => entry.id === listId);
       if (current) {
@@ -1096,19 +864,124 @@ function DashboardListPage() {
       }
       const items = await listReadingListItems(listId);
       setBooks(items.map(toBookFromListItem));
+      setLoading(false);
     };
 
-    load().catch(() => setBooks([]));
+    load().catch(() => {
+      setBooks([]);
+      setLoading(false);
+    });
   }, [id]);
 
-  return <SimpleShelf title={title} subtitle="Documente arhivate in aceasta colectie." books={books} />;
+  const listId = Number(id);
+
+  const handleRemoveBook = async (bookId: string) => {
+    if (!Number.isInteger(listId) || listId <= 0 || busyBookId) {
+      return;
+    }
+
+    setBusyBookId(bookId);
+    setMessage("");
+    try {
+      await removeReadingListItem(listId, bookId);
+      setBooks((current) => current.filter((entry) => entry.id !== bookId));
+      setMessage("Cartea a fost stearsa din colectie.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Nu am putut sterge cartea din colectie.");
+    } finally {
+      setBusyBookId(null);
+    }
+  };
+
+  const handleDeleteList = async () => {
+    if (!Number.isInteger(listId) || listId <= 0 || deletingList) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Stergi colectia \"${title}\" si toate cartile din ea?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingList(true);
+    setMessage("");
+    try {
+      await deleteReadingList(listId);
+      navigate("/dashboard/library", { replace: true });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Nu am putut sterge colectia.");
+      setDeletingList(false);
+    }
+  };
+
+  if (!Number.isInteger(listId) || listId <= 0) {
+    return (
+      <div className="rounded-2xl border border-ink/10 bg-white p-6">
+        <h1 className="text-2xl font-serif font-bold text-ink mb-2">Colectie invalida</h1>
+        <p className="text-ink/55">ID-ul colectiei nu este valid.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-serif font-bold text-ink mb-1">{title}</h1>
+          <p className="text-ink/50 font-sans">Documente arhivate in aceasta colectie.</p>
+        </div>
+        <button
+          onClick={handleDeleteList}
+          disabled={deletingList}
+          className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-xs uppercase tracking-widest font-bold text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50"
+        >
+          <Trash2 size={14} />
+          <span>{deletingList ? "Se sterge..." : "Sterge colectia"}</span>
+        </button>
+      </div>
+
+      {message ? <p className="mb-5 text-sm text-ink/60">{message}</p> : null}
+
+      {loading ? (
+        <div className="py-20 text-center text-ink/50 italic">Se incarca colectia...</div>
+      ) : books.length === 0 ? (
+        <div className="flex items-center justify-center h-[40vh] font-serif text-2xl italic opacity-40">Nu exista documente in aceasta colectie.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {books.map((book) => (
+            <div key={book.id} className="rounded-2xl border border-ink/10 bg-white p-4 relative">
+              <button
+                onClick={() => handleRemoveBook(book.id)}
+                disabled={busyBookId !== null}
+                className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[10px] uppercase tracking-widest font-bold text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40"
+              >
+                <Trash2 size={12} />
+                <span>{busyBookId === book.id ? "..." : "Sterge"}</span>
+              </button>
+
+              <Link to={`/book/${encodeURIComponent(book.id)}`} className="block">
+                <div className="aspect-[3/4] rounded-lg overflow-hidden mb-4 shadow-sm">
+                  <CoverImage src={book.coverImage} title={book.title} seed={book.id} className="w-full h-full object-cover" />
+                </div>
+                <h3 className="font-serif text-xl font-bold text-ink leading-tight mb-1">{toDisplayTitle(book.title)}</h3>
+                <p className="font-serif italic text-ink/55">{book.author || "Autor necunoscut"}</p>
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DashboardAdminUsersPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [inviteRequests, setInviteRequests] = useState<InviteRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingInvites, setLoadingInvites] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [inviteActionId, setInviteActionId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -1142,9 +1015,27 @@ function DashboardAdminUsersPage() {
     }
   };
 
+  const loadInviteQueue = async () => {
+    if (user?.role !== "admin") {
+      setLoadingInvites(false);
+      return;
+    }
+
+    setLoadingInvites(true);
+    try {
+      const rows = await listInviteRequests("pending");
+      setInviteRequests(rows);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Nu am putut incarca cererile de invitatie.");
+    } finally {
+      setLoadingInvites(false);
+    }
+  };
+
   useEffect(() => {
-    loadUsers().catch(() => {
+    Promise.all([loadUsers(), loadInviteQueue()]).catch(() => {
       setLoading(false);
+      setLoadingInvites(false);
     });
   }, [user?.role]);
 
@@ -1280,6 +1171,29 @@ function DashboardAdminUsersPage() {
     }
   };
 
+  const handleInviteDecision = async (request: InviteRequest, decision: "approve" | "deny") => {
+    if (!user || user.role !== "admin" || inviteActionId !== null) {
+      return;
+    }
+
+    const note = decision === "deny"
+      ? (window.prompt(`Motiv optional pentru respingerea lui ${request.username}:`) || "")
+      : "Invitatie aprobata";
+
+    setInviteActionId(request.id);
+    try {
+      await reviewInviteRequest(request.id, decision, note);
+      setMessage(decision === "approve"
+        ? `Cererea lui ${request.username} a fost aprobata.`
+        : `Cererea lui ${request.username} a fost respinsa.`);
+      await Promise.all([loadInviteQueue(), loadUsers()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Nu am putut procesa cererea.");
+    } finally {
+      setInviteActionId(null);
+    }
+  };
+
   if (!user || user.role !== "admin") {
     return (
       <div className="rounded-2xl border border-ink/10 bg-white p-8">
@@ -1299,7 +1213,7 @@ function DashboardAdminUsersPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-serif font-bold text-ink">User management</h1>
-          <p className="text-ink/50">Administreaza conturile si permisiunile din platforma.</p>
+          <p className="text-ink/50">Administreaza conturile, invitatiile si aprobarile din platforma.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1316,6 +1230,71 @@ function DashboardAdminUsersPage() {
             Refresh
           </button>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-ink/10 bg-white overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-ink/10 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs uppercase tracking-widest font-bold text-ink/40">
+            Cereri invitatie in asteptare ({inviteRequests.length})
+          </p>
+          <button
+            onClick={() => loadInviteQueue()}
+            className="rounded-lg border border-ink/15 px-3 py-1.5 text-xs text-ink/70 hover:border-primary hover:text-primary transition-colors"
+          >
+            Refresh cereri
+          </button>
+        </div>
+
+        {loadingInvites ? (
+          <div className="p-6 text-ink/50">Se incarca cererile...</div>
+        ) : inviteRequests.length === 0 ? (
+          <div className="p-6 text-ink/50">Nu exista cereri in asteptare.</div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="min-w-[760px] w-full border-collapse">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-widest text-ink/35 bg-surface-highest">
+                  <th className="px-4 py-3">Request ID</th>
+                  <th className="px-4 py-3">Username nou</th>
+                  <th className="px-4 py-3">Invitat de</th>
+                  <th className="px-4 py-3">Solicitat la</th>
+                  <th className="px-4 py-3">Actiuni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inviteRequests.map((request) => {
+                  const busy = inviteActionId === request.id;
+                  return (
+                    <tr key={request.id} className="border-t border-ink/10 text-sm text-ink/75">
+                      <td className="px-4 py-3">{request.id}</td>
+                      <td className="px-4 py-3 font-medium">{request.username}</td>
+                      <td className="px-4 py-3">{request.invitedByUsername || `#${request.invitedByUserId || "-"}`}</td>
+                      <td className="px-4 py-3">{formatAdminDate(request.requestedAt)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => handleInviteDecision(request, "approve")}
+                            disabled={busy || inviteActionId !== null}
+                            className="rounded-md border border-emerald-200 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+                          >
+                            Aproba
+                          </button>
+                          <button
+                            onClick={() => handleInviteDecision(request, "deny")}
+                            disabled={busy || inviteActionId !== null}
+                            className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40"
+                          >
+                            Respinge
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSave} className="rounded-2xl border border-ink/10 bg-white p-6 mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1476,17 +1455,12 @@ function SimpleShelf({ title, subtitle, books }: { title: string; subtitle: stri
 function Footer() {
   return (
     <footer className="bg-ink text-on-primary py-24 px-6 md:px-12 border-t border-white/5">
-      <div className="max-w-[1440px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-16">
+      <div className="max-w-[1440px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-16">
         <div className="space-y-8">
           <h2 className="text-3xl font-serif font-bold italic tracking-tight underline underline-offset-8 decoration-primary">Biblioteca Alternativa Cluj</h2>
           <p className="text-sm font-serif italic text-on-primary/60 leading-relaxed max-w-xs">
-            Platforma digitala pentru acces la colectiile academice ale Bibliotecii Alternative Cluj.
+            Platforma digitala alternativa pentru acces rapid la colectiile academice din Cluj.
           </p>
-          <div className="flex space-x-6">
-            <Twitter size={20} className="text-on-primary/40 hover:text-primary transition-colors cursor-pointer" />
-            <Instagram size={20} className="text-on-primary/40 hover:text-primary transition-colors cursor-pointer" />
-            <Mail size={20} className="text-on-primary/40 hover:text-primary transition-colors cursor-pointer" />
-          </div>
         </div>
 
         <div>
@@ -1494,7 +1468,6 @@ function Footer() {
           <ul className="space-y-4 font-sans text-xs uppercase tracking-widest font-medium">
             <li><Link to="/search" className="hover:text-primary transition-colors">Search</Link></li>
             <li><Link to="/explore" className="hover:text-primary transition-colors">Explore</Link></li>
-            <li><Link to="/authors" className="hover:text-primary transition-colors">Authors</Link></li>
             <li><Link to="/dashboard" className="hover:text-primary transition-colors">Dashboard</Link></li>
           </ul>
         </div>
@@ -1502,25 +1475,8 @@ function Footer() {
         <div>
           <h4 className="text-xs uppercase tracking-[0.4em] font-bold mb-8 opacity-40">Source</h4>
           <ul className="space-y-4 font-sans text-xs uppercase tracking-widest font-medium">
-            <li><a href="https://public-view.bcucluj.ro/pdfview/" target="_blank" rel="noreferrer" className="hover:text-primary transition-colors">BCU Public View</a></li>
-            <li><Link to="/search" className="hover:text-primary transition-colors">Indexed Faculties</Link></li>
-            <li><Link to="/dashboard/library" className="hover:text-primary transition-colors">Saved Collections</Link></li>
+            <li><a href="https://public-view.bcucluj.ro/" target="_blank" rel="noreferrer" className="hover:text-primary transition-colors">https://public-view.bcucluj.ro/</a></li>
           </ul>
-        </div>
-
-        <div>
-          <h4 className="text-xs uppercase tracking-[0.4em] font-bold mb-8 opacity-40">Noutati</h4>
-          <p className="text-sm font-serif italic text-on-primary/50 mb-6">Aboneaza-te pentru actualizari despre colectii si servicii.</p>
-          <div className="flex flex-col space-y-3">
-            <input
-              type="email"
-              placeholder="ADRESA EMAIL"
-              className="bg-white/5 border border-white/10 px-4 py-3 text-[10px] tracking-[0.2em] font-bold text-on-primary focus:outline-none focus:border-primary transition-all rounded-md"
-            />
-            <button className="bg-primary hover:bg-primary-container text-on-primary px-4 py-3 text-[10px] tracking-[0.3em] font-bold transition-all rounded-md">
-              ABONARE
-            </button>
-          </div>
         </div>
       </div>
 
@@ -1546,8 +1502,8 @@ function AnimatedRoutes() {
           <Route path="/search" element={<CatalogPage />} />
           <Route path="/catalog" element={<Navigate to="/search" replace />} />
           <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/invite/:token" element={<InviteRegistrationPage />} />
           <Route path="/book/:id" element={<BookDetailsPage />} />
-          <Route path="/authors" element={<AuthorsPage />} />
         </Route>
 
         <Route path="/dashboard" element={<DashboardLayout />}>

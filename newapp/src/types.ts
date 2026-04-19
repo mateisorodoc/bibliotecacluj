@@ -42,6 +42,7 @@ export interface AppUser {
   displayName: string;
   avatarUrl: string;
   bio: string;
+  pendingInviteRequests?: number;
 }
 
 export interface AdminUser {
@@ -72,4 +73,41 @@ export interface ReadingListItem {
   coverImage?: string;
   filePath: string;
   addedAt: string;
+}
+
+export interface InviteLink {
+  id: number;
+  token: string;
+  maxUses: number;
+  usesCount: number;
+  isActive: boolean;
+  expiresAt?: string | null;
+  createdAt: string;
+  createdByUserId: number;
+  createdByUsername?: string | null;
+  inviteUrl: string;
+}
+
+export interface InviteRequest {
+  id: number;
+  inviteLinkId: number;
+  inviteToken: string;
+  username: string;
+  status: "pending" | "approved" | "denied";
+  decisionNote: string;
+  invitedByUserId?: number | null;
+  invitedByUsername?: string | null;
+  reviewedByUserId?: number | null;
+  reviewedByUsername?: string | null;
+  approvedUserId?: number | null;
+  requestedAt: string;
+  reviewedAt?: string | null;
+}
+
+export interface PublicStats {
+  totalDocuments: number;
+  totalFaculties: number;
+  totalDepartments: number;
+  totalUsers: number;
+  totalAccesses: number;
 }

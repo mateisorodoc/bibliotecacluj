@@ -1,13 +1,15 @@
-﻿import { ArrowRight, Clock, Star, TrendingUp, ListChecks } from "lucide-react";
+﻿import { ArrowRight, Clock, Star, TrendingUp, ListChecks, Link2, BellRing } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { getDashboardSummary, resolveFileUrl } from "../lib/api";
+import { createInviteLink, getDashboardSummary, getPendingInviteRequestCount, listMyInvites, resolveFileUrl } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { useLibrary } from "../context/LibraryContext";
-import type { ReadingProgress } from "../types";
+import type { InviteLink, ReadingProgress } from "../types";
 import CoverImage from "./CoverImage";
 
 export default function DashboardOverview() {
+  const { user } = useAuth();
   const { books } = useLibrary();
   const [summary, setSummary] = useState({
     completedCount: 0,
@@ -18,6 +20,10 @@ export default function DashboardOverview() {
   });
   const [recent, setRecent] = useState<ReadingProgress[]>([]);
   const [opening, setOpening] = useState(false);
+  const [invites, setInvites] = useState<InviteLink[]>([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
 
   useEffect(() => {
     getDashboardSummary()
@@ -31,12 +37,31 @@ export default function DashboardOverview() {
       });
   }, []);
 
+  useEffect(() => {
+    listMyInvites()
+      .then((rows) => setInvites(rows.slice(0, 5)))
+      .catch(() => setInvites([]));
+  }, []);
+
+  useEffect(() => {
+    if (user?.role !== "admin") {
+      setPendingInviteCount(0);
+      return;
+    }
+
+    getPendingInviteRequestCount()
+      .then((count) => setPendingInviteCount(count))
+      .catch(() => setPendingInviteCount(0));
+  }, [user?.role]);
+
   const stats = [
     { label: "Documente finalizate", value: String(summary.completedCount), icon: TrendingUp },
     { label: "In lectura", value: String(summary.readingCount), icon: Clock },
     { label: "Wishlisted", value: String(summary.wishlistCount), icon: Star },
     { label: "Colectii", value: String(summary.listCount), icon: ListChecks }
   ];
+
+  const inviteLimitReached = invites.length >= 2;
 
   const recentBooks = useMemo(() => {
     const mapped = recent
@@ -75,6 +100,41 @@ export default function DashboardOverview() {
     }
   };
 
+  const handleCreateInvite = async () => {
+    if (inviteBusy) {
+      return;
+    }
+
+    if (inviteLimitReached) {
+      setInviteMessage("Ai atins limita de 2 linkuri de invitatie per utilizator.");
+      return;
+    }
+
+    setInviteBusy(true);
+    setInviteMessage(null);
+    try {
+      const created = await createInviteLink({ maxUses: 1, expiresInDays: 14 });
+      setInvites((current) => [created, ...current].slice(0, 5));
+      setInviteMessage("Link de invitatie creat. L-am copiat in clipboard.");
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(created.inviteUrl);
+      }
+    } catch (error) {
+      setInviteMessage(error instanceof Error ? error.message : "Nu am putut crea invitatia.");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const handleCopyInvite = async (invite: InviteLink) => {
+    try {
+      await navigator.clipboard.writeText(invite.inviteUrl);
+      setInviteMessage("Link copiat.");
+    } catch {
+      setInviteMessage("Clipboard indisponibil. Copiaza manual link-ul.");
+    }
+  };
+
   return (
     <div className="space-y-12">
       <div>
@@ -100,6 +160,60 @@ export default function DashboardOverview() {
             </div>
           </motion.div>
         ))}
+      </div>
+
+      {user?.role === "admin" && pendingInviteCount > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-amber-800">
+            <BellRing size={18} />
+            <p className="text-sm font-medium">Ai {pendingInviteCount} cereri de inregistrare in asteptare.</p>
+          </div>
+          <Link to="/dashboard/admin-users" className="text-xs uppercase tracking-widest font-bold text-amber-800 hover:opacity-80">
+            Revizuire cereri
+          </Link>
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border border-ink/10 bg-white p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-serif font-bold text-ink">Invita utilizatori noi</h3>
+            <p className="text-sm text-ink/55">Fiecare utilizator poate genera maximum 2 linkuri, iar fiecare link poate fi folosit o singura data.</p>
+          </div>
+          <button
+            onClick={handleCreateInvite}
+            disabled={inviteBusy || inviteLimitReached}
+            className="rounded-lg bg-ink px-4 py-2 text-xs uppercase tracking-widest font-bold text-on-primary hover:bg-primary transition-colors disabled:opacity-60"
+          >
+            {inviteBusy ? "Se creeaza..." : (inviteLimitReached ? "Limita atinsa" : "Genereaza link")}
+          </button>
+        </div>
+
+        {inviteMessage ? <p className="text-sm text-ink/65">{inviteMessage}</p> : null}
+
+        {invites.length === 0 ? (
+          <p className="text-sm text-ink/45">Nu ai invitatii generate inca.</p>
+        ) : (
+          <div className="space-y-2">
+            {invites.map((invite) => (
+              <div key={invite.id} className="rounded-lg border border-ink/10 bg-surface-low px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs text-ink/70 truncate flex items-center gap-2">
+                    <Link2 size={12} />
+                    {invite.inviteUrl}
+                  </p>
+                  <p className="text-[11px] text-ink/45 mt-1">Utilizari: {invite.usesCount}/{invite.maxUses}</p>
+                </div>
+                <button
+                  onClick={() => handleCopyInvite(invite)}
+                  className="rounded-md border border-ink/15 px-3 py-1 text-xs text-ink/70 hover:border-primary hover:text-primary transition-colors"
+                >
+                  Copiaza
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {currentRead ? (

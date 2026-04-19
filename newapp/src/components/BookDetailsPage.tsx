@@ -26,16 +26,33 @@ export default function BookDetailsPage() {
   const { books } = useLibrary();
 
   const book = useMemo(() => {
-    const found = books.find((entry) => {
-      if (entry.id === id) {
-        return true;
+    const decodeMany = (value: string, rounds = 3): string => {
+      let current = String(value || "");
+      for (let index = 0; index < rounds; index += 1) {
+        try {
+          const decoded = decodeURIComponent(current);
+          if (decoded === current) {
+            break;
+          }
+          current = decoded;
+        } catch {
+          break;
+        }
       }
+      return current;
+    };
 
-      try {
-        return decodeURIComponent(entry.id) === id;
-      } catch {
-        return false;
-      }
+    const normalizedId = decodeMany(id || "");
+
+    const found = books.find((entry) => {
+      const variants = [
+        String(entry.id || ""),
+        String(entry.filePath || ""),
+        decodeMany(String(entry.id || "")),
+        decodeMany(String(entry.filePath || ""))
+      ];
+
+      return variants.includes(String(id || "")) || variants.includes(normalizedId);
     });
     if (found) {
       return found;
@@ -51,22 +68,32 @@ export default function BookDetailsPage() {
     } catch {
       rawPath = id;
     }
+
     const fileName = rawPath.split("/").pop() || "document.pdf";
-    const title = fileName.replace(/\.pdf$/i, "");
+    const rawTitle = fileName.replace(/\.pdf$/i, "");
+    const structured = rawTitle.match(/^([^-]+)-(.+)-((?:19|20)\d{2})$/);
+    const author = structured
+      ? structured[1].replace(/[_]+/g, " ").replace(/\s+/g, " ").trim()
+      : "Autor necunoscut";
+    const title = structured
+      ? structured[2].replace(/[_]+/g, " ").replace(/\s+/g, " ").trim()
+      : rawTitle.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+    const year = structured ? structured[3] : undefined;
 
     return {
       id,
       title,
-      author: "BCU",
+      author,
       description: "Document incarcat dintr-o sursa externa indexului curent.",
-      coverImage: `https://picsum.photos/seed/${encodeURIComponent(rawPath)}/480/720`,
+      coverImage: "",
       genre: ["BCU"],
-      era: "Academic Collection",
+      era: year || "Academic Collection",
       faculty: "BCU",
       folderPath: rawPath.split("/").slice(0, -1).join("/"),
       filePath: rawPath,
       date: "-",
       sizeBytes: 0,
+      publishedYear: year ? Number.parseInt(year, 10) : undefined,
       languageSource: "unknown"
     };
   }, [books, id]);
@@ -298,7 +325,7 @@ export default function BookDetailsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div className="p-4 rounded-xl border border-ink/10 bg-surface-low">
               <p className="text-[10px] uppercase tracking-widest font-bold text-ink/40 mb-1">Collection</p>
-              <p className="font-serif text-ink">{book.genre[0]}</p>
+              <p className="font-serif text-ink">{(book.genre && book.genre[0]) || book.faculty || "BCU"}</p>
             </div>
             <div className="p-4 rounded-xl border border-ink/10 bg-surface-low">
               <p className="text-[10px] uppercase tracking-widest font-bold text-ink/40 mb-1">Departament</p>

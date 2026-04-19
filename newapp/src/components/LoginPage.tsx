@@ -1,5 +1,5 @@
 ﻿import { motion } from "motion/react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { LogIn, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from "react";
@@ -95,6 +95,15 @@ export default function LoginPage() {
             <span>{submitting ? "Se autentifica..." : "Intra in cont"}</span>
           </button>
         </form>
+
+        <div className="mt-8 pt-5 border-t border-ink/10 text-sm text-center text-ink/55">
+          Ai primit un link de invitatie?
+          <br />
+          <span className="text-ink/45">Deschide link-ul primit pentru a crea contul si a trimite cererea de aprobare.</span>
+          <div className="mt-3">
+            <Link to="/" className="text-primary font-semibold hover:opacity-80">Inapoi la pagina principala</Link>
+          </div>
+        </div>
       </motion.div>
     </div>
   );

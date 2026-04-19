@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const compression = require("compression");
 const cookieParser = require("cookie-parser");
@@ -10,6 +11,7 @@ const helmet = require("helmet");
 const jwt = require("jsonwebtoken");
 const { Readable } = require("stream");
 const { openDatabase, createRepository } = require("./src/db");
+const { indexFaculty, indexAllFaculties } = require("./src/lib/server_crawler");
 
 dotenv.config();
 
@@ -24,6 +26,7 @@ const BCU_ALLOWED_URLS = [
 ].map((url) => new URL(url));
 const bcuResolvedUrlCache = new Map();
 const BCU_RESOLVED_TTL_MS = 1000 * 60 * 60 * 12;
+const USERNAME_REGEX = /^[A-Za-z0-9._-]{3,64}$/;
 
 const config = {
     port: Number(process.env.PORT || 3000),
@@ -32,12 +35,32 @@ const config = {
     jwtExpiresHours: Number(process.env.JWT_EXPIRES_HOURS || 12),
     adminUsername: process.env.ADMIN_USERNAME || "admin",
     adminPassword: process.env.ADMIN_PASSWORD || "ChangeMe123!",
+    publicAppUrl: String(process.env.PUBLIC_APP_URL || "").trim().replace(/\/+$/, ""),
     isProd: process.env.NODE_ENV === "production"
 };
 
 if (!process.env.JWT_SECRET) {
     // Keep startup explicit to avoid unsafe production defaults.
     console.warn("[WARN] JWT_SECRET is not set. Using an insecure fallback for development only.");
+}
+
+if (config.isProd && (!process.env.JWT_SECRET || config.jwtSecret.length < 32)) {
+    throw new Error("In production, JWT_SECRET must be set and at least 32 characters long.");
+}
+
+if (config.isProd && config.adminPassword === "ChangeMe123!") {
+    throw new Error("In production, ADMIN_PASSWORD must be changed from default value.");
+}
+
+if (config.publicAppUrl) {
+    try {
+        const parsed = new URL(config.publicAppUrl);
+        if (config.isProd && parsed.protocol !== "https:") {
+            throw new Error("PUBLIC_APP_URL must use https in production.");
+        }
+    } catch {
+        throw new Error("PUBLIC_APP_URL is invalid. Use absolute URL, e.g. https://bibliotecacluj.com");
+    }
 }
 
 const dbPath = path.join(rootDir, "data", "bcu.db");
@@ -58,6 +81,13 @@ const authLimiter = rateLimit({
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 800,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const adminActionLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 120,
     standardHeaders: true,
     legacyHeaders: false
 });
@@ -83,7 +113,7 @@ app.use(helmet({
 app.use("/api", apiLimiter);
 
 function sanitizeUsername(value) {
-    return String(value || "").trim().replace(/\s+/g, " ");
+    return String(value || "").trim();
 }
 
 function sanitizeText(value, maxLength = 500) {
@@ -95,7 +125,20 @@ function sanitizeOptionalUrl(value) {
     if (!normalized) {
         return "";
     }
-    return normalized;
+
+    try {
+        const parsed = new URL(normalized);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            return "";
+        }
+        return parsed.toString();
+    } catch {
+        return "";
+    }
+}
+
+function isValidUsername(value) {
+    return USERNAME_REGEX.test(String(value || ""));
 }
 
 function isValidRole(value) {
@@ -323,6 +366,78 @@ function buildUserPayload(user) {
     };
 }
 
+function toSqlDateString(date) {
+    return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function parseSqlDate(value) {
+    if (!value) {
+        return null;
+    }
+
+    const timestamp = Date.parse(String(value).replace(" ", "T") + "Z");
+    if (Number.isNaN(timestamp)) {
+        return null;
+    }
+
+    return new Date(timestamp);
+}
+
+function isInviteLinkOpen(inviteLink) {
+    if (!inviteLink || inviteLink.is_active !== 1) {
+        return false;
+    }
+
+    const expiresAt = parseSqlDate(inviteLink.expires_at);
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+        return false;
+    }
+
+    if (inviteLink.max_uses > 0 && inviteLink.uses_count >= inviteLink.max_uses) {
+        return false;
+    }
+
+    return true;
+}
+
+function toInviteLinkPayload(inviteLink, req) {
+    const origin = config.publicAppUrl || `${req.protocol}://${req.get("host")}`;
+    return {
+        id: inviteLink.id,
+        token: inviteLink.token,
+        maxUses: inviteLink.max_uses,
+        usesCount: inviteLink.uses_count,
+        isActive: inviteLink.is_active === 1,
+        expiresAt: inviteLink.expires_at || null,
+        createdAt: inviteLink.created_at,
+        createdByUserId: inviteLink.created_by_user_id,
+        createdByUsername: inviteLink.created_by_username || null,
+        inviteUrl: `${origin}/app/invite/${encodeURIComponent(inviteLink.token)}`
+    };
+}
+
+function toInviteRequestPayload(entry) {
+    return {
+        id: entry.id,
+        inviteLinkId: entry.invite_link_id,
+        inviteToken: entry.invite_token,
+        username: entry.username,
+        status: entry.status,
+        decisionNote: entry.decision_note || "",
+        invitedByUserId: entry.created_by_user_id,
+        invitedByUsername: entry.invited_by_username || null,
+        reviewedByUserId: entry.reviewed_by_user_id || null,
+        reviewedByUsername: entry.reviewed_by_username || null,
+        approvedUserId: entry.approved_user_id || null,
+        requestedAt: entry.requested_at,
+        reviewedAt: entry.reviewed_at || null
+    };
+}
+
+function generateInviteToken() {
+    return crypto.randomBytes(24).toString("base64url");
+}
+
 function requireAuth(req, res, next) {
     const user = attachUserFromSession(req);
     if (!user) {
@@ -342,19 +457,18 @@ function requireAdmin(req, res, next) {
     return next();
 }
 
-function forceAdminPage(req, res, next) {
-    const user = attachUserFromSession(req);
-    if (!user) {
-        return res.redirect("/login");
-    }
-    if (user.role !== "admin") {
-        return res.redirect("/app");
-    }
-    return next();
-}
-
 app.get("/health", (_req, res) => {
     res.json({ ok: true, uptimeSeconds: Math.round(process.uptime()) });
+});
+
+app.get("/api/public/stats", (_req, res) => {
+    try {
+        const stats = repo.getPublicStats();
+        return res.json({ stats });
+    } catch (error) {
+        console.error("[Server] Public stats error:", error);
+        return res.status(500).json({ error: "Cannot load public stats" });
+    }
 });
 
 app.get("/api/bcu/html", async (req, res) => {
@@ -472,6 +586,86 @@ app.get(["/app/bcu/download", "/app/api/bcu/download"], (req, res) => {
     return res.redirect(307, `/api/bcu/download${query}`);
 });
 
+// Faculty Catalog Indexing API
+app.get("/api/bcu/catalog/:faculty", async (req, res) => {
+    const facultyKey = req.params.faculty;
+    if (!facultyKey) return res.status(400).json({ error: "Faculty key required" });
+
+    try {
+        const cached = repo.getFacultyCatalog(facultyKey);
+        if (cached) {
+            return res.json({
+                books: JSON.parse(cached.books_json),
+                indexedAt: cached.indexed_at,
+                version: cached.version
+            });
+        }
+        return res.status(404).json({ error: "Catalog not indexed yet" });
+    } catch (error) {
+        return res.status(500).json({ error: "Failed to fetch catalog" });
+    }
+});
+
+app.get("/api/bcu/search", async (req, res) => {
+    const query = sanitizeText(req.query.q, 100);
+    if (!query) return res.status(400).json({ error: "Query required" });
+
+    try {
+        const results = repo.searchBooksGlobal(query);
+        return res.json({ books: results });
+    } catch (error) {
+        console.error("[Server] Search error:", error);
+        return res.status(500).json({ error: "Search failed" });
+    }
+});
+
+app.post("/api/bcu/catalog/rebuild-all", requireAuth, requireAdmin, adminActionLimiter, async (req, res) => {
+    // Start global indexing in background
+    indexAllFaculties(async (key, label, books) => {
+        repo.upsertFacultyCatalog({
+            facultyKey: key,
+            booksJson: JSON.stringify(books),
+            version: 1
+        });
+        repo.clearAndInsertBooks(label, books);
+    }).then(() => {
+        console.log("[Server] Global indexing completed successfully.");
+    }).catch((err) => {
+        console.error("[Server] Global indexing failed:", err);
+    });
+
+    return res.json({ ok: true, message: "Global indexing started in background" });
+});
+
+app.post("/api/bcu/catalog/:faculty/rebuild", requireAuth, requireAdmin, adminActionLimiter, async (req, res) => {
+    const facultyKey = req.params.faculty;
+    const { label, url } = req.body;
+
+    if (!facultyKey || !label || !url) {
+        return res.status(400).json({ error: "Faculty key, label and url are required" });
+    }
+
+    // Start indexing in background (or foreground if small)
+    try {
+        const books = await indexFaculty(facultyKey, label, url);
+        repo.upsertFacultyCatalog({
+            facultyKey,
+            booksJson: JSON.stringify(books),
+            version: 1 // Start at 1
+        });
+        repo.clearAndInsertBooks(label, books);
+
+        return res.json({
+            ok: true,
+            count: books.length,
+            indexedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error(`[Server] Rebuild error for ${facultyKey}:`, error);
+        return res.status(500).json({ error: "Indexing failed" });
+    }
+});
+
 app.post("/api/auth/login", authLimiter, async (req, res) => {
     const username = sanitizeUsername(req.body?.username);
     const password = String(req.body?.password || "");
@@ -496,9 +690,14 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
     const token = signSessionToken(user);
     res.cookie("bcu_session", token, getTokenCookieOptions());
 
+    const payload = buildUserPayload(user);
+    if (user.role === "admin") {
+        payload.pendingInviteRequests = repo.getPendingInviteRequestCount();
+    }
+
     return res.json({
         ok: true,
-        user: buildUserPayload(user)
+        user: payload
     });
 });
 
@@ -520,7 +719,136 @@ app.get("/api/auth/me", (req, res) => {
 
     repo.ensureUserProfile(user.id, user.username);
 
-    return res.json({ authenticated: true, user: buildUserPayload(user) });
+    const payload = buildUserPayload(user);
+    if (user.role === "admin") {
+        payload.pendingInviteRequests = repo.getPendingInviteRequestCount();
+    }
+
+    return res.json({ authenticated: true, user: payload });
+});
+
+app.get("/api/user/invites", requireAuth, (req, res) => {
+    const rows = repo.listInviteLinksByCreator(req.user.id).map((entry) => toInviteLinkPayload(entry, req));
+    return res.json({ invites: rows });
+});
+
+app.post("/api/user/invites", requireAuth, (req, res) => {
+    const rawExpiresInDays = Number(req.body?.expiresInDays);
+
+    const totalByCreator = repo.countInviteLinksByCreator(req.user.id);
+    if (totalByCreator >= 2) {
+        return res.status(400).json({ error: "Poti genera maximum 2 linkuri de invitatie." });
+    }
+
+    const maxUses = 1;
+    const expiresInDays = Number.isInteger(rawExpiresInDays) && rawExpiresInDays > 0
+        ? Math.min(rawExpiresInDays, 90)
+        : 14;
+    const expiresAt = toSqlDateString(new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000));
+
+    let created = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+        const token = generateInviteToken();
+        if (repo.getInviteLinkByToken(token)) {
+            continue;
+        }
+
+        created = repo.createInviteLink({
+            token,
+            createdByUserId: req.user.id,
+            maxUses,
+            expiresAt
+        });
+        break;
+    }
+
+    if (!created) {
+        return res.status(500).json({ error: "Cannot generate invite link right now" });
+    }
+
+    const invites = repo.listInviteLinksByCreator(req.user.id);
+    const createdInvite = invites.find((entry) => entry.id === created.lastInsertRowid);
+    if (!createdInvite) {
+        return res.status(500).json({ error: "Invite link created but cannot be loaded" });
+    }
+
+    return res.status(201).json({ ok: true, invite: toInviteLinkPayload(createdInvite, req) });
+});
+
+app.get("/api/invites/:token", (req, res) => {
+    const token = sanitizeText(req.params.token, 240);
+    if (!token) {
+        return res.status(400).json({ error: "Invalid invite token" });
+    }
+
+    const invite = repo.getInviteLinkByToken(token);
+    if (!invite) {
+        return res.status(404).json({ error: "Invite link not found" });
+    }
+
+    if (!isInviteLinkOpen(invite)) {
+        return res.status(410).json({ error: "Invite link is no longer valid" });
+    }
+
+    return res.json({
+        invite: {
+            token: invite.token,
+            expiresAt: invite.expires_at || null,
+            maxUses: invite.max_uses,
+            usesCount: invite.uses_count,
+            isActive: invite.is_active === 1
+        }
+    });
+});
+
+app.post("/api/invites/:token/register", authLimiter, async (req, res) => {
+    const token = sanitizeText(req.params.token, 240);
+    const username = sanitizeUsername(req.body?.username);
+    const password = String(req.body?.password || "");
+
+    if (!token) {
+        return res.status(400).json({ error: "Invalid invite token" });
+    }
+    if (!isValidUsername(username)) {
+        return res.status(400).json({ error: "Username must have 3-64 chars and contain only letters, numbers, ., _ or -" });
+    }
+    if (password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+
+    const invite = repo.getInviteLinkByToken(token);
+    if (!invite || !isInviteLinkOpen(invite)) {
+        return res.status(410).json({ error: "Invite link is no longer valid" });
+    }
+
+    if (repo.getUserAuthByUsername(username)) {
+        return res.status(409).json({ error: "Username already exists" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = repo.createInviteRequest({
+        inviteLinkId: invite.id,
+        username,
+        passwordHash
+    });
+
+    if (!result.ok) {
+        if (result.error === "USERNAME_EXISTS") {
+            return res.status(409).json({ error: "Username already exists" });
+        }
+        if (result.error === "REQUEST_ALREADY_PENDING") {
+            return res.status(409).json({ error: "A request for this username is already pending" });
+        }
+        if (result.error === "INVITE_NOT_AVAILABLE" || result.error === "INVITE_EXPIRED" || result.error === "INVITE_EXHAUSTED") {
+            return res.status(410).json({ error: "Invite link is no longer valid" });
+        }
+        return res.status(500).json({ error: "Cannot create registration request" });
+    }
+
+    return res.status(201).json({
+        ok: true,
+        message: "Registration request submitted. An admin must approve your account."
+    });
 });
 
 app.get("/api/admin/users", requireAuth, requireAdmin, (_req, res) => {
@@ -537,14 +865,82 @@ app.get("/api/admin/users", requireAuth, requireAdmin, (_req, res) => {
     return res.json({ users });
 });
 
-app.post("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+app.get("/api/admin/invite-requests/summary", requireAuth, requireAdmin, (_req, res) => {
+    return res.json({ pendingCount: repo.getPendingInviteRequestCount() });
+});
+
+app.get("/api/admin/invite-requests", requireAuth, requireAdmin, (req, res) => {
+    const rawStatus = sanitizeText(req.query.status, 20).toLowerCase();
+    const status = rawStatus === "pending" || rawStatus === "approved" || rawStatus === "denied"
+        ? rawStatus
+        : null;
+
+    const requests = repo.listInviteRequests(status).map(toInviteRequestPayload);
+    return res.json({ requests });
+});
+
+app.patch("/api/admin/invite-requests/:id", requireAuth, requireAdmin, adminActionLimiter, (req, res) => {
+    const requestId = Number(req.params.id);
+    const decision = sanitizeText(req.body?.decision, 20).toLowerCase();
+    const note = sanitizeText(req.body?.note, 240);
+
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+        return res.status(400).json({ error: "Invalid request id" });
+    }
+
+    if (decision !== "approve" && decision !== "deny") {
+        return res.status(400).json({ error: "Decision must be approve or deny" });
+    }
+
+    if (decision === "deny") {
+        const denied = repo.denyInviteRequest({
+            requestId,
+            reviewedByUserId: req.user.id,
+            decisionNote: note
+        });
+
+        if (!denied.changes) {
+            return res.status(404).json({ error: "Pending request not found" });
+        }
+
+        return res.json({ ok: true, status: "denied" });
+    }
+
+    const approved = repo.approveInviteRequest({
+        requestId,
+        reviewedByUserId: req.user.id,
+        decisionNote: note
+    });
+
+    if (!approved.ok) {
+        if (approved.error === "REQUEST_NOT_PENDING") {
+            return res.status(404).json({ error: "Pending request not found" });
+        }
+        if (approved.error === "USERNAME_EXISTS") {
+            return res.status(409).json({ error: "Username already exists" });
+        }
+        if (approved.error === "REQUEST_ALREADY_PENDING") {
+            return res.status(409).json({ error: "Another pending request exists for this username" });
+        }
+        return res.status(500).json({ error: "Cannot approve request" });
+    }
+
+    return res.json({
+        ok: true,
+        status: "approved",
+        userId: approved.userId,
+        username: approved.username
+    });
+});
+
+app.post("/api/admin/users", requireAuth, requireAdmin, adminActionLimiter, async (req, res) => {
     const username = sanitizeUsername(req.body?.username);
     const password = String(req.body?.password || "");
     const role = String(req.body?.role || "user").toLowerCase();
     const isActive = req.body?.isActive !== false;
 
-    if (!username || username.length < 3) {
-        return res.status(400).json({ error: "Username must be at least 3 characters" });
+    if (!isValidUsername(username)) {
+        return res.status(400).json({ error: "Username must have 3-64 chars and contain only letters, numbers, ., _ or -" });
     }
     if (password.length < 8) {
         return res.status(400).json({ error: "Password must be at least 8 characters" });
@@ -563,7 +959,7 @@ app.post("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     return res.status(201).json({ ok: true });
 });
 
-app.patch("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+app.patch("/api/admin/users/:id", requireAuth, requireAdmin, adminActionLimiter, async (req, res) => {
     const userId = Number(req.params.id);
     if (!Number.isInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: "Invalid user id" });
@@ -579,8 +975,8 @@ app.patch("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) =>
     const isActive = req.body?.isActive !== undefined ? Boolean(req.body.isActive) : target.is_active === 1;
     const newPassword = String(req.body?.password || "");
 
-    if (!username || username.length < 3) {
-        return res.status(400).json({ error: "Username must be at least 3 characters" });
+    if (!isValidUsername(username)) {
+        return res.status(400).json({ error: "Username must have 3-64 chars and contain only letters, numbers, ., _ or -" });
     }
     if (!isValidRole(role)) {
         return res.status(400).json({ error: "Invalid role" });
@@ -617,7 +1013,7 @@ app.patch("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) =>
     return res.json({ ok: true });
 });
 
-app.delete("/api/admin/users/:id", requireAuth, requireAdmin, (req, res) => {
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, adminActionLimiter, (req, res) => {
     const userId = Number(req.params.id);
     if (!Number.isInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: "Invalid user id" });
@@ -895,16 +1291,6 @@ app.get("/api/user/dashboard-summary", requireAuth, (req, res) => {
     return res.json({ summary, recent });
 });
 
-function sendRootFile(fileName) {
-    return (_req, res) => {
-        const filePath = path.join(rootDir, fileName);
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).send("Not found");
-        }
-        return res.sendFile(filePath);
-    };
-}
-
 app.get("/", (req, res) => {
     return res.redirect("/app");
 });
@@ -912,11 +1298,6 @@ app.get("/", (req, res) => {
 app.get("/login", (_req, res) => {
     return res.redirect("/app/login");
 });
-
-app.get("/admin", forceAdminPage, sendRootFile("admin.html"));
-
-app.get("/admin.js", forceAdminPage, sendRootFile("admin.js"));
-app.get("/admin.css", forceAdminPage, sendRootFile("admin.css"));
 
 app.use("/assets", (req, res, next) => {
     const assetsDir = path.join(newAppDistDir, "assets");
@@ -940,12 +1321,24 @@ app.get("/app", (_req, res) => {
         return res.status(503).send("newapp build not found. Run: npm --prefix newapp run build");
     }
 
+    try {
+        repo.incrementTotalAccesses();
+    } catch (error) {
+        console.error("[Server] Cannot increment total accesses:", error);
+    }
+
     return res.sendFile(path.join(newAppDistDir, "index.html"));
 });
 
 app.get("/app/*", (_req, res) => {
     if (!fs.existsSync(newAppDistDir)) {
         return res.status(503).send("newapp build not found. Run: npm --prefix newapp run build");
+    }
+
+    try {
+        repo.incrementTotalAccesses();
+    } catch (error) {
+        console.error("[Server] Cannot increment total accesses:", error);
     }
 
     return res.sendFile(path.join(newAppDistDir, "index.html"));

@@ -32,6 +32,34 @@ function openDatabase(dbFilePath) {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS invite_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT NOT NULL UNIQUE,
+            created_by_user_id INTEGER NOT NULL,
+            max_uses INTEGER NOT NULL DEFAULT 1,
+            uses_count INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            expires_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS invite_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invite_link_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
+            decision_note TEXT NOT NULL DEFAULT '',
+            reviewed_by_user_id INTEGER,
+            approved_user_id INTEGER,
+            requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+            reviewed_at TEXT,
+            FOREIGN KEY (invite_link_id) REFERENCES invite_links(id) ON DELETE CASCADE,
+            FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (approved_user_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS reading_lists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -66,8 +94,49 @@ function openDatabase(dbFilePath) {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS faculty_catalogs (
+            faculty_key TEXT PRIMARY KEY,
+            books_json TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT (datetime('now')),
+            version INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS books (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            author TEXT,
+            description TEXT,
+            cover_image TEXT,
+            faculty TEXT NOT NULL,
+            department TEXT,
+            language TEXT,
+            published_year INTEGER,
+            file_path TEXT NOT NULL,
+            folder_path TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS app_metrics (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            total_accesses INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO app_metrics (id, total_accesses, updated_at)
+        SELECT 1, 0, datetime('now')
+        WHERE NOT EXISTS (SELECT 1 FROM app_metrics WHERE id = 1);
+
+        CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
+        CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
+        CREATE INDEX IF NOT EXISTS idx_books_faculty ON books(faculty);
+        CREATE INDEX IF NOT EXISTS idx_books_department ON books(department);
+
         CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
         CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+        CREATE INDEX IF NOT EXISTS idx_invite_links_token ON invite_links(token);
+        CREATE INDEX IF NOT EXISTS idx_invite_links_creator ON invite_links(created_by_user_id);
+        CREATE INDEX IF NOT EXISTS idx_invite_requests_status ON invite_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_invite_requests_username ON invite_requests(username);
         CREATE INDEX IF NOT EXISTS idx_reading_lists_user ON reading_lists(user_id);
         CREATE INDEX IF NOT EXISTS idx_reading_progress_user ON reading_progress(user_id);
         CREATE INDEX IF NOT EXISTS idx_reading_progress_status ON reading_progress(user_id, status);
@@ -125,6 +194,146 @@ function createRepository(db) {
         deleteUser: db.prepare(`
             DELETE FROM users
             WHERE id = ?
+        `),
+        createInviteLink: db.prepare(`
+            INSERT INTO invite_links (token, created_by_user_id, max_uses, expires_at)
+            VALUES (?, ?, ?, ?)
+        `),
+        listInviteLinksByCreator: db.prepare(`
+            SELECT
+                il.id,
+                il.token,
+                il.created_by_user_id,
+                il.max_uses,
+                il.uses_count,
+                il.is_active,
+                il.expires_at,
+                il.created_at,
+                u.username AS created_by_username
+            FROM invite_links il
+            LEFT JOIN users u ON u.id = il.created_by_user_id
+            WHERE il.created_by_user_id = ?
+            ORDER BY il.created_at DESC, il.id DESC
+            LIMIT 50
+        `),
+        countInviteLinksByCreator: db.prepare(`
+            SELECT COUNT(*) AS total
+            FROM invite_links
+            WHERE created_by_user_id = ?
+        `),
+        getInviteLinkById: db.prepare(`
+            SELECT id, token, created_by_user_id, max_uses, uses_count, is_active, expires_at, created_at
+            FROM invite_links
+            WHERE id = ?
+        `),
+        getInviteLinkByToken: db.prepare(`
+            SELECT id, token, created_by_user_id, max_uses, uses_count, is_active, expires_at, created_at
+            FROM invite_links
+            WHERE token = ?
+        `),
+        getActiveInviteLinkByToken: db.prepare(`
+            SELECT id, token, created_by_user_id, max_uses, uses_count, is_active, expires_at, created_at
+            FROM invite_links
+            WHERE token = ?
+              AND is_active = 1
+              AND (expires_at IS NULL OR expires_at > datetime('now'))
+              AND (max_uses <= 0 OR uses_count < max_uses)
+        `),
+        incrementInviteLinkUse: db.prepare(`
+            UPDATE invite_links
+            SET
+                uses_count = uses_count + 1,
+                is_active = CASE
+                    WHEN max_uses > 0 AND (uses_count + 1) >= max_uses THEN 0
+                    ELSE is_active
+                END
+            WHERE id = ?
+        `),
+        getPendingInviteRequestByUsername: db.prepare(`
+            SELECT id, invite_link_id, username, status
+            FROM invite_requests
+            WHERE lower(username) = lower(?) AND status = 'pending'
+            ORDER BY requested_at DESC
+            LIMIT 1
+        `),
+        createInviteRequest: db.prepare(`
+            INSERT INTO invite_requests (invite_link_id, username, password_hash, status)
+            VALUES (?, ?, ?, 'pending')
+        `),
+        getInviteRequestById: db.prepare(`
+            SELECT id, invite_link_id, username, password_hash, status, requested_at
+            FROM invite_requests
+            WHERE id = ?
+        `),
+        listInviteRequestsAll: db.prepare(`
+            SELECT
+                ir.id,
+                ir.invite_link_id,
+                ir.username,
+                ir.status,
+                ir.decision_note,
+                ir.reviewed_by_user_id,
+                ir.approved_user_id,
+                ir.requested_at,
+                ir.reviewed_at,
+                il.token AS invite_token,
+                il.created_by_user_id,
+                iu.username AS invited_by_username,
+                ru.username AS reviewed_by_username
+            FROM invite_requests ir
+            JOIN invite_links il ON il.id = ir.invite_link_id
+            LEFT JOIN users iu ON iu.id = il.created_by_user_id
+            LEFT JOIN users ru ON ru.id = ir.reviewed_by_user_id
+            ORDER BY
+                CASE ir.status WHEN 'pending' THEN 0 ELSE 1 END,
+                ir.requested_at DESC,
+                ir.id DESC
+        `),
+        listInviteRequestsByStatus: db.prepare(`
+            SELECT
+                ir.id,
+                ir.invite_link_id,
+                ir.username,
+                ir.status,
+                ir.decision_note,
+                ir.reviewed_by_user_id,
+                ir.approved_user_id,
+                ir.requested_at,
+                ir.reviewed_at,
+                il.token AS invite_token,
+                il.created_by_user_id,
+                iu.username AS invited_by_username,
+                ru.username AS reviewed_by_username
+            FROM invite_requests ir
+            JOIN invite_links il ON il.id = ir.invite_link_id
+            LEFT JOIN users iu ON iu.id = il.created_by_user_id
+            LEFT JOIN users ru ON ru.id = ir.reviewed_by_user_id
+            WHERE ir.status = ?
+            ORDER BY ir.requested_at DESC, ir.id DESC
+        `),
+        getPendingInviteRequestCount: db.prepare(`
+            SELECT COUNT(*) AS total
+            FROM invite_requests
+            WHERE status = 'pending'
+        `),
+        approveInviteRequest: db.prepare(`
+            UPDATE invite_requests
+            SET
+                status = 'approved',
+                decision_note = ?,
+                reviewed_by_user_id = ?,
+                approved_user_id = ?,
+                reviewed_at = datetime('now')
+            WHERE id = ? AND status = 'pending'
+        `),
+        denyInviteRequest: db.prepare(`
+            UPDATE invite_requests
+            SET
+                status = 'denied',
+                decision_note = ?,
+                reviewed_by_user_id = ?,
+                reviewed_at = datetime('now')
+            WHERE id = ? AND status = 'pending'
         `),
         ensureUserProfile: db.prepare(`
             INSERT INTO user_profiles (user_id, display_name, avatar_url, bio, updated_at)
@@ -233,12 +442,121 @@ function createRepository(db) {
             SELECT COUNT(*) AS total
             FROM reading_lists
             WHERE user_id = ?
+        `),
+        getFacultyCatalog: db.prepare(`
+            SELECT faculty_key, books_json, indexed_at, version
+            FROM faculty_catalogs
+            WHERE faculty_key = ?
+        `),
+        upsertFacultyCatalog: db.prepare(`
+            INSERT INTO faculty_catalogs (faculty_key, books_json, indexed_at, version)
+            VALUES (?, ?, datetime('now'), ?)
+            ON CONFLICT(faculty_key) DO UPDATE SET
+                books_json = excluded.books_json,
+                indexed_at = datetime('now'),
+                version = excluded.version
+        `),
+        clearBooksByFaculty: db.prepare(`
+            DELETE FROM books WHERE faculty = ?
+        `),
+        insertBook: db.prepare(`
+            INSERT INTO books (
+                id, title, author, description, cover_image, faculty, 
+                department, language, published_year, file_path, folder_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `),
+        searchBooks: db.prepare(`
+            SELECT id, title, author, description, cover_image, faculty, department, language, published_year, file_path, folder_path
+            FROM books
+            WHERE title LIKE ? OR author LIKE ? OR faculty LIKE ? OR department LIKE ?
+            LIMIT 100
+        `),
+        getPublicStats: db.prepare(`
+            SELECT
+                (SELECT COUNT(*) FROM books) AS total_documents,
+                (
+                    SELECT COUNT(DISTINCT trim(faculty))
+                    FROM books
+                    WHERE trim(COALESCE(faculty, '')) <> ''
+                ) AS total_faculties,
+                (
+                    SELECT COUNT(DISTINCT trim(department))
+                    FROM books
+                    WHERE trim(COALESCE(department, '')) <> '' AND lower(trim(department)) <> 'general'
+                ) AS total_departments,
+                (SELECT COUNT(*) FROM users WHERE is_active = 1) AS total_users,
+                (SELECT total_accesses FROM app_metrics WHERE id = 1) AS total_accesses
+        `),
+        incrementTotalAccesses: db.prepare(`
+            UPDATE app_metrics
+            SET total_accesses = total_accesses + 1,
+                updated_at = datetime('now')
+            WHERE id = 1
         `)
     };
 
     const ensureUserProfile = (userId, username) => {
         statements.ensureUserProfile.run(userId, username);
     };
+
+    const createInviteRequestTransaction = db.transaction(({ inviteLinkId, username, passwordHash }) => {
+        const inviteLink = statements.getInviteLinkById.get(inviteLinkId);
+        if (!inviteLink || inviteLink.is_active !== 1) {
+            return { ok: false, error: "INVITE_NOT_AVAILABLE" };
+        }
+
+        if (inviteLink.expires_at) {
+            const expiryTimestamp = Date.parse(String(inviteLink.expires_at).replace(" ", "T") + "Z");
+            if (Number.isFinite(expiryTimestamp) && expiryTimestamp <= Date.now()) {
+                return { ok: false, error: "INVITE_EXPIRED" };
+            }
+        }
+
+        if (inviteLink.max_uses > 0 && inviteLink.uses_count >= inviteLink.max_uses) {
+            return { ok: false, error: "INVITE_EXHAUSTED" };
+        }
+
+        const existingUser = statements.getUserAuthByUsername.get(username);
+        if (existingUser) {
+            return { ok: false, error: "USERNAME_EXISTS" };
+        }
+
+        const pending = statements.getPendingInviteRequestByUsername.get(username);
+        if (pending) {
+            return { ok: false, error: "REQUEST_ALREADY_PENDING" };
+        }
+
+        const created = statements.createInviteRequest.run(inviteLink.id, username, passwordHash);
+        statements.incrementInviteLinkUse.run(inviteLink.id);
+        return { ok: true, requestId: created.lastInsertRowid };
+    });
+
+    const approveInviteRequestTransaction = db.transaction(({ requestId, reviewedByUserId, decisionNote }) => {
+        const request = statements.getInviteRequestById.get(requestId);
+        if (!request || request.status !== "pending") {
+            return { ok: false, error: "REQUEST_NOT_PENDING" };
+        }
+
+        const existingUser = statements.getUserAuthByUsername.get(request.username);
+        if (existingUser) {
+            return { ok: false, error: "USERNAME_EXISTS" };
+        }
+
+        const duplicatePending = statements.getPendingInviteRequestByUsername.get(request.username);
+        if (duplicatePending && duplicatePending.id !== request.id) {
+            return { ok: false, error: "REQUEST_ALREADY_PENDING" };
+        }
+
+        const createdUser = statements.insertUser.run(request.username, request.password_hash, "user", 1);
+        statements.approveInviteRequest.run(decisionNote || "", reviewedByUserId, createdUser.lastInsertRowid, request.id);
+        ensureUserProfile(createdUser.lastInsertRowid, request.username);
+
+        return {
+            ok: true,
+            userId: createdUser.lastInsertRowid,
+            username: request.username
+        };
+    });
 
     const ensureAdmin = ({ username, password }) => {
         const existing = statements.getUserAuthByUsername.get(username);
@@ -273,6 +591,24 @@ function createRepository(db) {
         },
         updateLastLogin: (id) => statements.updateLastLogin.run(id),
         deleteUser: (id) => statements.deleteUser.run(id),
+        createInviteLink: ({ token, createdByUserId, maxUses, expiresAt }) =>
+            statements.createInviteLink.run(token, createdByUserId, maxUses, expiresAt || null),
+        listInviteLinksByCreator: (userId) => statements.listInviteLinksByCreator.all(userId),
+        countInviteLinksByCreator: (userId) => {
+            const row = statements.countInviteLinksByCreator.get(userId);
+            return Number(row?.total || 0);
+        },
+        getInviteLinkByToken: (token) => statements.getInviteLinkByToken.get(token),
+        getActiveInviteLinkByToken: (token) => statements.getActiveInviteLinkByToken.get(token),
+        createInviteRequest: ({ inviteLinkId, username, passwordHash }) =>
+            createInviteRequestTransaction({ inviteLinkId, username, passwordHash }),
+        listInviteRequests: (status) =>
+            status ? statements.listInviteRequestsByStatus.all(status) : statements.listInviteRequestsAll.all(),
+        getPendingInviteRequestCount: () => statements.getPendingInviteRequestCount.get().total,
+        denyInviteRequest: ({ requestId, reviewedByUserId, decisionNote }) =>
+            statements.denyInviteRequest.run(decisionNote || "", reviewedByUserId, requestId),
+        approveInviteRequest: ({ requestId, reviewedByUserId, decisionNote }) =>
+            approveInviteRequestTransaction({ requestId, reviewedByUserId, decisionNote }),
         getUserProfile: (userId) => statements.getUserProfile.get(userId),
         upsertUserProfile: ({ userId, displayName, avatarUrl, bio }) =>
             statements.upsertUserProfile.run(userId, displayName, avatarUrl || "", bio || ""),
@@ -300,7 +636,38 @@ function createRepository(db) {
                 trackedCount: progress.tracked_count || 0,
                 listCount: lists.total || 0
             };
-        }
+        },
+        getFacultyCatalog: (facultyKey) => statements.getFacultyCatalog.get(facultyKey),
+        upsertFacultyCatalog: ({ facultyKey, booksJson, version }) =>
+            statements.upsertFacultyCatalog.run(facultyKey, booksJson, version),
+        clearAndInsertBooks: (facultyName, books) => {
+            const transaction = db.transaction((booksList) => {
+                statements.clearBooksByFaculty.run(facultyName);
+                for (const book of booksList) {
+                    statements.insertBook.run(
+                        book.id, book.title, book.author, book.description, book.coverImage,
+                        book.faculty, book.department, book.language, book.publishedYear || null,
+                        book.filePath, book.folderPath || ""
+                    );
+                }
+            });
+            transaction(books);
+        },
+        searchBooksGlobal: (query) => {
+            const q = `%${query}%`;
+            return statements.searchBooks.all(q, q, q, q);
+        },
+        getPublicStats: () => {
+            const row = statements.getPublicStats.get() || {};
+            return {
+                totalDocuments: Number(row.total_documents || 0),
+                totalFaculties: Number(row.total_faculties || 0),
+                totalDepartments: Number(row.total_departments || 0),
+                totalUsers: Number(row.total_users || 0),
+                totalAccesses: Number(row.total_accesses || 0)
+            };
+        },
+        incrementTotalAccesses: () => statements.incrementTotalAccesses.run()
     };
 }
 

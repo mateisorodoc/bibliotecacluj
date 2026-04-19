@@ -74,34 +74,34 @@ export default function ProfilePage() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.5 }}
-      className="max-w-2xl mx-auto"
+      className="max-w-2xl mx-auto px-1 sm:px-2"
     >
-      <div className="mb-12">
-        <h1 className="text-3xl font-serif font-bold text-ink mb-2">Account Sanctuary</h1>
-        <p className="text-ink/50 font-sans font-medium italic">Refine your identity in this BCU-powered archive.</p>
+      <div className="mb-8 md:mb-12 px-2 sm:px-0">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-ink mb-2">Setari Profil</h1>
+        <p className="text-ink/50 text-sm sm:text-base font-sans font-medium italic">Actualizeaza informatiile contului pentru o experienta mai buna.</p>
       </div>
 
-      <div className="glass-panel p-8 md:p-12 rounded-3xl border border-white/40 shadow-xl shadow-ink/5">
-        <form onSubmit={handleSave} className="space-y-8">
-          <div className="flex flex-col items-center space-y-5">
-            <div className="w-32 h-32 rounded-full overflow-hidden border-8 border-white shadow-2xl bg-surface-highest flex items-center justify-center">
+      <div className="glass-panel p-4 sm:p-6 md:p-10 rounded-2xl md:rounded-3xl border border-white/40 shadow-xl shadow-ink/5">
+        <form onSubmit={handleSave} className="space-y-6 md:space-y-8">
+          <div className="flex flex-col items-center space-y-4 md:space-y-5">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 sm:border-6 md:border-8 border-white shadow-xl bg-surface-highest flex items-center justify-center">
               {avatarUrl ? (
                 <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <User size={58} className="text-ink/10" strokeWidth={1} />
+                <User size={42} className="text-ink/10" strokeWidth={1} />
               )}
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-5 md:space-y-6">
             <div>
-              <label className="text-[10px] uppercase tracking-widest font-bold text-ink/40 ml-1 block mb-2">Display Name</label>
+              <label className="text-[10px] uppercase tracking-widest font-bold text-ink/40 ml-1 block mb-2">Nume afisat</label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
-                className="w-full bg-white border border-ink/10 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Your display name"
+                className="w-full min-h-[44px] bg-white border border-ink/10 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="Numele tau afisat"
               />
             </div>
 
@@ -111,7 +111,7 @@ export default function ProfilePage() {
                 type="url"
                 value={avatarUrl}
                 onChange={(event) => setAvatarUrl(event.target.value)}
-                className="w-full bg-white border border-ink/10 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full min-h-[44px] bg-white border border-ink/10 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="https://..."
               />
             </div>
@@ -123,7 +123,7 @@ export default function ProfilePage() {
                 onChange={(event) => setBio(event.target.value)}
                 rows={4}
                 className="w-full bg-white border border-ink/10 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Describe your academic interests..."
+                placeholder="Descrie interesele tale academice..."
               />
             </div>
           </div>
@@ -138,10 +138,10 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full bg-ink text-on-primary py-4 rounded-xl font-sans text-xs uppercase tracking-widest font-bold flex items-center justify-center space-x-3 hover:bg-primary transition-all shadow-lg shadow-ink/10 disabled:opacity-50"
+            className="w-full min-h-[46px] bg-ink text-on-primary py-3.5 rounded-xl font-sans text-xs uppercase tracking-widest font-bold flex items-center justify-center space-x-3 hover:bg-primary transition-all shadow-lg shadow-ink/10 disabled:opacity-50"
           >
             <Save size={16} strokeWidth={1.8} />
-            <span>{saving ? "Saving..." : "Save Profile"}</span>
+            <span>{saving ? "Se salveaza..." : "Salveaza profilul"}</span>
           </button>
         </form>
       </div>

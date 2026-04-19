@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { discoverFaculties, loadCatalogForFaculty, searchBooks } from "../lib/bcu";
+import { discoverFaculties, loadCatalogForFaculty, searchBooks, searchBooksServer } from "../lib/bcu";
 import type { Book, Faculty } from "../types";
 
 type LibraryContextType = {
@@ -92,7 +92,41 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshCatalog(false);
   }, [activeFaculty, refreshCatalog]);
 
-  const filteredBooks = useMemo(() => searchBooks(books, searchQuery), [books, searchQuery]);
+  const [serverResults, setServerResults] = useState<Book[]>([]);
+  const [isSearchingServer, setIsSearchingServer] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (searchQuery.trim().length >= 3) {
+        setIsSearchingServer(true);
+        const results = await searchBooksServer(searchQuery);
+        setServerResults(results);
+        setIsSearchingServer(false);
+      } else {
+        setServerResults([]);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const filteredBooks = useMemo(() => {
+    const local = searchBooks(books, searchQuery);
+    
+    // If we have server results, merge them with local results (avoiding duplicates)
+    if (serverResults.length > 0) {
+      const merged = [...local];
+      const localIds = new Set(local.map(b => b.id));
+      for (const b of serverResults) {
+        if (!localIds.has(b.id)) {
+          merged.push(b);
+        }
+      }
+      return merged;
+    }
+    
+    return local;
+  }, [books, searchQuery, serverResults]);
 
   const value: LibraryContextType = {
     faculties,

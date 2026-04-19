@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type CoverImageProps = {
   src?: string;
@@ -12,45 +12,45 @@ type CoverImageProps = {
 function choosePalette(seedValue: string) {
   const palettes = [
     {
-      base: "#4a2f25",
-      accent: "#7b5a47",
-      border: "#2f1d17",
-      text: "#f1e8dd",
+      base: "#3a2c22",
+      accent: "#75614c",
+      border: "#22180f",
+      text: "#f0e8dd",
       texture: "#ffffff"
     },
     {
-      base: "#5b3a2b",
-      accent: "#8a624d",
-      border: "#352117",
-      text: "#f4e9de",
+      base: "#2e4048",
+      accent: "#57717d",
+      border: "#182329",
+      text: "#e8f0f3",
       texture: "#ffffff"
     },
     {
-      base: "#4f1f24",
-      accent: "#8e3b46",
-      border: "#2e1014",
-      text: "#f7e6e8",
+      base: "#4a1f30",
+      accent: "#8a445d",
+      border: "#2a111b",
+      text: "#f6e7ec",
       texture: "#ffffff"
     },
     {
-      base: "#642329",
-      accent: "#9a4953",
-      border: "#3a1116",
-      text: "#f8eaec",
+      base: "#25403a",
+      accent: "#4a786d",
+      border: "#162620",
+      text: "#e5f1ed",
       texture: "#ffffff"
     },
     {
-      base: "#1f3c2d",
-      accent: "#3e6d56",
-      border: "#14261d",
-      text: "#e5f1ea",
+      base: "#483723",
+      accent: "#7c6447",
+      border: "#2b2114",
+      text: "#f2ebde",
       texture: "#ffffff"
     },
     {
-      base: "#244433",
-      accent: "#4a7a60",
-      border: "#15281e",
-      text: "#e8f2ec",
+      base: "#322947",
+      accent: "#665086",
+      border: "#1e172b",
+      text: "#ece8f6",
       texture: "#ffffff"
     }
   ];
@@ -65,8 +65,16 @@ function choosePalette(seedValue: string) {
   return palettes[(hash >>> 0) % palettes.length];
 }
 
-function buildBookPlaceholderSvg(seedValue: string): string {
+function buildBookPlaceholderSvg(seedValue: string, titleValue: string): string {
   const palette = choosePalette(seedValue);
+  const cleanTitle = titleValue
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 36);
+  const titleTop = cleanTitle.slice(0, 18) || "Biblioteca";
+  const titleBottom = cleanTitle.slice(18) || "Alternativa Cluj";
+
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="480" height="720" viewBox="0 0 480 720" role="img" aria-label="Coperta generica">
       <defs>
@@ -81,11 +89,15 @@ function buildBookPlaceholderSvg(seedValue: string): string {
       </defs>
       <rect width="480" height="720" fill="url(#coverG)"/>
       <rect x="36" y="0" width="52" height="720" fill="url(#spineG)" opacity="0.96"/>
-      <rect x="88" y="0" width="2" height="720" fill="${palette.texture}" opacity="0.2"/>
-      <rect x="70" y="92" width="352" height="536" rx="4" fill="none" stroke="${palette.texture}" stroke-width="2" opacity="0.22"/>
-      <rect x="110" y="238" width="260" height="170" rx="10" fill="${palette.border}" opacity="0.22"/>
-      <text x="240" y="312" text-anchor="middle" font-family="Georgia, serif" font-size="30" fill="${palette.text}">Biblioteca</text>
-      <text x="240" y="350" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="${palette.text}">Alternativa Cluj</text>
+      <rect x="88" y="0" width="2" height="720" fill="${palette.texture}" opacity="0.22"/>
+      <rect x="70" y="92" width="352" height="536" rx="4" fill="none" stroke="${palette.texture}" stroke-width="2" opacity="0.25"/>
+      <rect x="110" y="172" width="260" height="258" rx="10" fill="${palette.border}" opacity="0.24"/>
+      <rect x="124" y="482" width="232" height="2" fill="${palette.texture}" opacity="0.2"/>
+      <rect x="124" y="500" width="190" height="2" fill="${palette.texture}" opacity="0.16"/>
+      <text x="240" y="242" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="${palette.text}" letter-spacing="4">ARHIVA DIGITALA</text>
+      <text x="240" y="308" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="${palette.text}">${titleTop}</text>
+      <text x="240" y="344" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="${palette.text}">${titleBottom}</text>
+      <text x="240" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="${palette.text}" opacity="0.8">Biblioteca Alternativa Cluj</text>
     </svg>
   `;
 
@@ -100,8 +112,14 @@ export default function CoverImage({
   alt,
   referrerPolicy = "no-referrer"
 }: CoverImageProps) {
-  const genericBookCover = useMemo(() => buildBookPlaceholderSvg(seed || title || "generic"), [seed, title]);
-  const [currentSrc, setCurrentSrc] = useState(genericBookCover);
+  const paletteSeed = seed || title || "generic";
+  const genericBookCover = useMemo(() => buildBookPlaceholderSvg(paletteSeed, title || "Biblioteca Alternativa Cluj"), [paletteSeed, title]);
+  const preferredSrc = (src || "").trim() || genericBookCover;
+  const [currentSrc, setCurrentSrc] = useState(preferredSrc);
+
+  useEffect(() => {
+    setCurrentSrc(preferredSrc);
+  }, [preferredSrc]);
 
   return (
     <img
@@ -109,6 +127,9 @@ export default function CoverImage({
       alt={alt || title}
       className={className}
       referrerPolicy={referrerPolicy}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
       onError={() => {
         if (currentSrc !== genericBookCover) {
           setCurrentSrc(genericBookCover);
