@@ -3,6 +3,8 @@ import { LogIn, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from "react";
 
+type LocationState = { from?: { pathname?: string } };
+
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
   const navigate = useNavigate();
@@ -12,7 +14,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/dashboard";
+  const from = (location.state as LocationState | null)?.from?.pathname || "/dashboard";
 
   useEffect(() => {
     if (user && !loading) {
