@@ -42,6 +42,7 @@ export interface AppUser {
   displayName: string;
   avatarUrl: string;
   bio: string;
+  kindleEmail: string;
   pendingInviteRequests?: number;
 }
 

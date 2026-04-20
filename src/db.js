@@ -28,6 +28,7 @@ function openDatabase(dbFilePath) {
             display_name TEXT NOT NULL,
             avatar_url TEXT NOT NULL DEFAULT '',
             bio TEXT NOT NULL DEFAULT '',
+            kindle_email TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -141,6 +142,12 @@ function openDatabase(dbFilePath) {
         CREATE INDEX IF NOT EXISTS idx_reading_progress_user ON reading_progress(user_id);
         CREATE INDEX IF NOT EXISTS idx_reading_progress_status ON reading_progress(user_id, status);
     `);
+
+    // Migrate: add kindle_email column if it does not exist yet
+    const profileColumns = db.pragma("table_info(user_profiles)");
+    if (!profileColumns.some((col) => col.name === "kindle_email")) {
+        db.exec(`ALTER TABLE user_profiles ADD COLUMN kindle_email TEXT NOT NULL DEFAULT ''`);
+    }
 
     return db;
 }
@@ -336,22 +343,23 @@ function createRepository(db) {
             WHERE id = ? AND status = 'pending'
         `),
         ensureUserProfile: db.prepare(`
-            INSERT INTO user_profiles (user_id, display_name, avatar_url, bio, updated_at)
-            VALUES (?, ?, '', '', datetime('now'))
+            INSERT INTO user_profiles (user_id, display_name, avatar_url, bio, kindle_email, updated_at)
+            VALUES (?, ?, '', '', '', datetime('now'))
             ON CONFLICT(user_id) DO NOTHING
         `),
         getUserProfile: db.prepare(`
-            SELECT user_id, display_name, avatar_url, bio, updated_at
+            SELECT user_id, display_name, avatar_url, bio, kindle_email, updated_at
             FROM user_profiles
             WHERE user_id = ?
         `),
         upsertUserProfile: db.prepare(`
-            INSERT INTO user_profiles (user_id, display_name, avatar_url, bio, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
+            INSERT INTO user_profiles (user_id, display_name, avatar_url, bio, kindle_email, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(user_id) DO UPDATE SET
                 display_name = excluded.display_name,
                 avatar_url = excluded.avatar_url,
                 bio = excluded.bio,
+                kindle_email = excluded.kindle_email,
                 updated_at = datetime('now')
         `),
         listReadingLists: db.prepare(`
@@ -610,8 +618,8 @@ function createRepository(db) {
         approveInviteRequest: ({ requestId, reviewedByUserId, decisionNote }) =>
             approveInviteRequestTransaction({ requestId, reviewedByUserId, decisionNote }),
         getUserProfile: (userId) => statements.getUserProfile.get(userId),
-        upsertUserProfile: ({ userId, displayName, avatarUrl, bio }) =>
-            statements.upsertUserProfile.run(userId, displayName, avatarUrl || "", bio || ""),
+        upsertUserProfile: ({ userId, displayName, avatarUrl, bio, kindleEmail }) =>
+            statements.upsertUserProfile.run(userId, displayName, avatarUrl || "", bio || "", kindleEmail || ""),
         listReadingLists: (userId) => statements.listReadingLists.all(userId),
         getReadingListById: (listId) => statements.getReadingListById.get(listId),
         createReadingList: ({ userId, name }) => statements.insertReadingList.run(userId, name),

@@ -8,13 +8,14 @@ import {
   CheckCircle,
   Loader2,
   Check,
-  Download
+  Download,
+  Send
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import React from "react";
 import { useAuth } from "../context/AuthContext";
 import { useLibrary } from "../context/LibraryContext";
-import { addReadingListItem, createReadingList, getBcuDownloadUrl, listProgress, listReadingLists, resolveFileUrl, upsertProgress } from "../lib/api";
+import { addReadingListItem, createReadingList, getBcuDownloadUrl, listProgress, listReadingLists, resolveFileUrl, sendToKindle, upsertProgress } from "../lib/api";
 import type { ReadingList, ReadingProgress } from "../types";
 import CoverImage from "./CoverImage";
 
@@ -125,6 +126,8 @@ export default function BookDetailsPage() {
   const [readingStatus, setReadingStatus] = useState<ReadingProgress["status"]>("none");
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const [isResolvingFile, setIsResolvingFile] = useState(false);
+  const [isSendingToKindle, setIsSendingToKindle] = useState(false);
+  const [kindleMessage, setKindleMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -270,6 +273,31 @@ export default function BookDetailsPage() {
     anchor.remove();
   };
 
+  const handleSendToKindle = async () => {
+    if (!book || isSendingToKindle) {
+      return;
+    }
+
+    if (!user?.kindleEmail) {
+      setKindleMessage({ type: "error", text: "Setati adresa Kindle in Profil inainte de a folosi aceasta functie." });
+      setTimeout(() => setKindleMessage(null), 4000);
+      return;
+    }
+
+    setIsSendingToKindle(true);
+    setKindleMessage(null);
+    try {
+      await sendToKindle(book.filePath, book.title);
+      setKindleMessage({ type: "success", text: `Trimis la Kindle (${user.kindleEmail}).` });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Nu s-a putut trimite la Kindle.";
+      setKindleMessage({ type: "error", text });
+    } finally {
+      setIsSendingToKindle(false);
+      setTimeout(() => setKindleMessage(null), 5000);
+    }
+  };
+
   if (!book) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-6">
@@ -354,6 +382,14 @@ export default function BookDetailsPage() {
               <span>{isResolvingFile ? "Se pregateste..." : "Descarca"}</span>
             </button>
             <button
+              onClick={handleSendToKindle}
+              disabled={isSendingToKindle}
+              className="px-6 py-3 border border-ink/15 rounded-lg text-xs uppercase tracking-widest font-bold text-ink/70 hover:text-primary flex items-center space-x-2 disabled:opacity-50"
+            >
+              <Send size={15} />
+              <span>{isSendingToKindle ? "Se trimite..." : "Send to Kindle"}</span>
+            </button>
+            <button
               onClick={handleOpenModal}
               className="px-6 py-3 border border-ink/15 rounded-lg text-xs uppercase tracking-widest font-bold text-ink/70 hover:text-primary flex items-center space-x-2"
             >
@@ -361,6 +397,13 @@ export default function BookDetailsPage() {
               <span>Adauga in lista</span>
             </button>
           </div>
+
+          {kindleMessage && (
+            <div className={`flex items-center space-x-2 p-3 rounded-xl text-sm font-medium ${kindleMessage.type === "success" ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-700"}`}>
+              <CheckCircle size={15} />
+              <span>{kindleMessage.text}</span>
+            </div>
+          )}
 
           <div className="pt-2 flex flex-wrap gap-2">
             <button
