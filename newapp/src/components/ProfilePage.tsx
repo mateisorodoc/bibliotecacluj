@@ -1,13 +1,14 @@
 ﻿import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getProfile, updateProfile } from "../lib/api";
-import { User, Save, CheckCircle, AlertCircle } from "lucide-react";
+import { User, Save, CheckCircle, AlertCircle, Mail } from "lucide-react";
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bio, setBio] = useState("");
+  const [kindleEmail, setKindleEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -23,6 +24,7 @@ export default function ProfilePage() {
         setDisplayName(profile.displayName || "");
         setAvatarUrl(profile.avatarUrl || "");
         setBio(profile.bio || "");
+        setKindleEmail(profile.kindleEmail || "");
       })
       .catch(() => {
         setDisplayName(user.displayName || user.username);
@@ -47,7 +49,8 @@ export default function ProfilePage() {
       await updateProfile({
         displayName: displayName.trim(),
         avatarUrl: avatarUrl.trim(),
-        bio: bio.trim()
+        bio: bio.trim(),
+        kindleEmail: kindleEmail.trim()
       });
       await refreshUser();
       setMessage({ type: "success", text: "Profile updated successfully." });
@@ -118,6 +121,21 @@ export default function ProfilePage() {
                 className="w-full bg-white border border-ink/10 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Descrie interesele tale academice..."
               />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-bold text-ink/40 ml-1 block mb-2">Kindle Email</label>
+              <div className="relative">
+                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/30 pointer-events-none" />
+                <input
+                  type="email"
+                  value={kindleEmail}
+                  onChange={(event) => setKindleEmail(event.target.value)}
+                  className="w-full min-h-[44px] bg-white border border-ink/10 pl-9 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="username@kindle.com"
+                />
+              </div>
+              <p className="mt-1.5 text-[10px] text-ink/40 ml-1">Adresa de email a dispozitivului Kindle, pentru funcția Send to Kindle.</p>
             </div>
           </div>
 

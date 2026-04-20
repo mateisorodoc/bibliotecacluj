@@ -45,12 +45,19 @@ export async function getProfile(): Promise<AppUser> {
   return result.profile;
 }
 
-export async function updateProfile(input: { displayName: string; avatarUrl?: string; bio?: string }): Promise<AppUser> {
+export async function updateProfile(input: { displayName: string; avatarUrl?: string; bio?: string; kindleEmail?: string }): Promise<AppUser> {
   const result = await apiRequest<{ ok: boolean; profile: AppUser }>("/api/user/profile", {
     method: "PATCH",
     body: JSON.stringify(input)
   });
   return result.profile;
+}
+
+export async function sendToKindle(url: string, title: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>("/api/user/send-to-kindle", {
+    method: "POST",
+    body: JSON.stringify({ url, title })
+  });
 }
 
 export async function listReadingLists(): Promise<ReadingList[]> {

@@ -9,6 +9,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
 const { Readable } = require("stream");
 const { openDatabase, createRepository } = require("./src/db");
 const { indexFaculty, indexAllFaculties } = require("./src/lib/server_crawler");
@@ -36,7 +37,15 @@ const config = {
     adminUsername: process.env.ADMIN_USERNAME || "admin",
     adminPassword: process.env.ADMIN_PASSWORD || "ChangeMe123!",
     publicAppUrl: String(process.env.PUBLIC_APP_URL || "").trim().replace(/\/+$/, ""),
-    isProd: process.env.NODE_ENV === "production"
+    isProd: process.env.NODE_ENV === "production",
+    smtp: {
+        host: process.env.SMTP_HOST || "",
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: process.env.SMTP_SECURE === "true",
+        user: process.env.SMTP_USER || "",
+        pass: process.env.SMTP_PASS || "",
+        fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || ""
+    }
 };
 
 if (!process.env.JWT_SECRET) {
@@ -362,7 +371,8 @@ function buildUserPayload(user) {
         role: user.role,
         displayName: profile?.display_name || user.username,
         avatarUrl: profile?.avatar_url || "",
-        bio: profile?.bio || ""
+        bio: profile?.bio || "",
+        kindleEmail: profile?.kindle_email || ""
     };
 }
 
@@ -1069,19 +1079,119 @@ app.patch("/api/user/profile", requireAuth, (req, res) => {
     const displayName = sanitizeText(req.body?.displayName || req.user.username, 100);
     const avatarUrl = sanitizeOptionalUrl(req.body?.avatarUrl || "");
     const bio = sanitizeText(req.body?.bio || "", 600);
+    const kindleEmail = sanitizeText(req.body?.kindleEmail || "", 254);
 
     if (!displayName) {
         return res.status(400).json({ error: "Display name is required" });
+    }
+
+    if (kindleEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kindleEmail)) {
+        return res.status(400).json({ error: "Invalid Kindle email address" });
     }
 
     repo.upsertUserProfile({
         userId: req.user.id,
         displayName,
         avatarUrl,
-        bio
+        bio,
+        kindleEmail
     });
 
     return res.json({ ok: true, profile: buildUserPayload(req.user) });
+});
+
+const kindleSendLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+app.post("/api/user/send-to-kindle", requireAuth, kindleSendLimiter, async (req, res) => {
+    if (!config.smtp.host || !config.smtp.fromEmail) {
+        return res.status(503).json({ error: "Send to Kindle is not configured on this server" });
+    }
+
+    const profile = repo.getUserProfile(req.user.id);
+    const kindleEmail = profile?.kindle_email || "";
+    if (!kindleEmail) {
+        return res.status(400).json({ error: "No Kindle email set in your profile" });
+    }
+
+    const sourceUrl = normalizeBcuResourceUrl(req.body?.url);
+    if (!sourceUrl) {
+        return res.status(400).json({ error: "Invalid resource URL" });
+    }
+
+    const title = sanitizeText(req.body?.title || "Document", 300);
+
+    let resolvedUrl;
+    try {
+        resolvedUrl = await resolveBcuFileUrl(sourceUrl);
+    } catch (error) {
+        if (error && error.name === "AbortError") {
+            return res.status(504).json({ error: "Resolve request timed out" });
+        }
+        return res.status(502).json({ error: "Cannot resolve file URL" });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    let pdfBuffer;
+    let downloadName;
+    try {
+        const upstream = await fetch(resolvedUrl, {
+            redirect: "follow",
+            signal: controller.signal,
+            headers: {
+                "user-agent": "BCU-Library-Platform/1.0",
+                accept: "application/pdf,*/*;q=0.8"
+            }
+        });
+
+        if (!upstream.ok) {
+            return res.status(upstream.status).json({ error: `BCU upstream HTTP ${upstream.status}` });
+        }
+
+        pdfBuffer = Buffer.from(await upstream.arrayBuffer());
+        downloadName = safeDownloadFileName(title || fileNameFromUrl(resolvedUrl));
+    } catch (error) {
+        if (error && error.name === "AbortError") {
+            return res.status(504).json({ error: "Download request timed out" });
+        }
+        return res.status(502).json({ error: "Cannot download file" });
+    } finally {
+        clearTimeout(timeout);
+    }
+
+    try {
+        const transporter = nodemailer.createTransport({
+            host: config.smtp.host,
+            port: config.smtp.port,
+            secure: config.smtp.secure,
+            auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined
+        });
+
+        await transporter.sendMail({
+            from: config.smtp.fromEmail,
+            to: kindleEmail,
+            subject: title,
+            text: `Attached: ${title}`,
+            attachments: [
+                {
+                    filename: downloadName,
+                    content: pdfBuffer,
+                    contentType: "application/pdf"
+                }
+            ]
+        });
+
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error("[Server] Send to Kindle email error:", error);
+        return res.status(502).json({ error: "Failed to send email to Kindle" });
+    }
 });
 
 app.get("/api/user/lists", requireAuth, (req, res) => {
