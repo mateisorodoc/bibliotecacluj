@@ -264,7 +264,7 @@ function HomePage() {
               <span className="italic font-normal">pentru intreaga comunitate.</span>
             </h1>
             <p className="max-w-xl text-lg md:text-xl font-serif text-ink/60 italic leading-relaxed mb-4">
-              Aceasta platforma este o alternativa la Biblioteca Centrala Universitara Lucian Blaga Cluj-Napoca, construita pentru acces mai usor, mai rapid si deschis tuturor.
+              Aceasta platforma este o alternativa mai rapida si mai usor de folosit pentru Biblioteca Digitala din cadrul institutiei Biblioteca Centrala Universitara Lucian Blaga Cluj-Napoca. Nu se percepem taxe, nu facem profit si incurajam utilizarea site-ului oficial https://www.bcucluj.ro
             </p>
             <p className="max-w-xl text-base text-ink/55 leading-relaxed mb-4">
               Sustinem in continuare bibliotecile publice de stat si incurajam oamenii sa le viziteze si fizic, iar atunci cand isi permit, sa cumpere carti pentru a sprijini lectura si cultura locala.
