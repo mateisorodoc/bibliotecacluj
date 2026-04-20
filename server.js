@@ -471,7 +471,7 @@ app.get("/api/public/stats", (_req, res) => {
     }
 });
 
-app.get("/api/bcu/html", async (req, res) => {
+app.get("/api/bcu/html", requireAuth, async (req, res) => {
     const targetUrl = toAllowedBcuUrl(req.query.url);
     if (!targetUrl) {
         return res.status(400).json({ error: "Invalid BCU URL" });
@@ -507,7 +507,7 @@ app.get("/api/bcu/html", async (req, res) => {
     }
 });
 
-app.get("/api/bcu/resolve-file", async (req, res) => {
+app.get("/api/bcu/resolve-file", requireAuth, async (req, res) => {
     const sourceUrl = normalizeBcuResourceUrl(req.query.url);
     if (!sourceUrl) {
         return res.status(400).json({ error: "Invalid resource URL" });
@@ -524,7 +524,7 @@ app.get("/api/bcu/resolve-file", async (req, res) => {
     }
 });
 
-app.get("/api/bcu/download", async (req, res) => {
+app.get("/api/bcu/download", requireAuth, async (req, res) => {
     const sourceUrl = normalizeBcuResourceUrl(req.query.url);
     if (!sourceUrl) {
         return res.status(400).json({ error: "Invalid resource URL" });
@@ -587,7 +587,7 @@ app.get(["/app/bcu/download", "/app/api/bcu/download"], (req, res) => {
 });
 
 // Faculty Catalog Indexing API
-app.get("/api/bcu/catalog/:faculty", async (req, res) => {
+app.get("/api/bcu/catalog/:faculty", requireAuth, async (req, res) => {
     const facultyKey = req.params.faculty;
     if (!facultyKey) return res.status(400).json({ error: "Faculty key required" });
 
@@ -606,7 +606,7 @@ app.get("/api/bcu/catalog/:faculty", async (req, res) => {
     }
 });
 
-app.get("/api/bcu/search", async (req, res) => {
+app.get("/api/bcu/search", requireAuth, async (req, res) => {
     const query = sanitizeText(req.query.q, 100);
     if (!query) return res.status(400).json({ error: "Query required" });
 

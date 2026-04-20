@@ -36,7 +36,7 @@ export default function Navbar({ themeMode, onToggleTheme }: NavbarProps) {
           </Link>
 
           <div className="hidden md:flex items-center space-x-10">
-            {navLinks.map((link) => (
+            {user && navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
@@ -107,7 +107,7 @@ export default function Navbar({ themeMode, onToggleTheme }: NavbarProps) {
 
         {isOpen && (
             <div className="md:hidden absolute top-full left-0 w-full bg-surface-low border-t border-ink/5 p-5 space-y-4 shadow-xl">
-              {navLinks.map((link) => (
+              {user && navLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
