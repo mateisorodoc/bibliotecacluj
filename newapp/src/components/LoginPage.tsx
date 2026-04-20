@@ -1,4 +1,4 @@
-﻿import { Link, useNavigate } from "react-router-dom";
+﻿import { Link, useNavigate, useLocation } from "react-router-dom";
 import { LogIn, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from "react";
@@ -6,16 +6,19 @@ import { useEffect, useState } from "react";
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/dashboard";
+
   useEffect(() => {
     if (user && !loading) {
-      navigate("/dashboard", { replace: true });
+      navigate(from, { replace: true });
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, from]);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -28,7 +31,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(username.trim(), password);
-      navigate("/dashboard", { replace: true });
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Autentificare esuata.");
     } finally {

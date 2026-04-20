@@ -160,6 +160,25 @@ function DashboardLayout({ themeMode, onToggleTheme }: { themeMode: ThemeMode; o
   );
 }
 
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-low">
+        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function BookCard({ book }: { book: Book }) {
   const year = book.publishedYear || Number.parseInt(book.era, 10) || undefined;
   const displayTitle = toDisplayTitle(book.title);
@@ -199,6 +218,7 @@ function BookCard({ book }: { book: Book }) {
 
 function HomePage() {
   const { books, faculties } = useLibrary();
+  const { user } = useAuth();
   const featured = books.slice(0, 4);
   const heroImage = "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1400&q=80";
   const [stats, setStats] = useState({
@@ -260,12 +280,22 @@ function HomePage() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to="/search" className="px-10 py-5 bg-ink text-on-primary font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:bg-primary transition-all flex items-center justify-center group">
-                Intra in Search <ArrowRight size={16} className="ml-3 group-hover:translate-x-1 transition-transform" />
-              </Link>
-              <Link to="/dashboard" className="px-10 py-5 border border-ink/20 text-ink/60 font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:border-primary hover:text-primary transition-all flex items-center justify-center">
-                Biblioteca Mea
-              </Link>
+              {user ? (
+                <>
+                  <Link to="/search" className="px-10 py-5 bg-ink text-on-primary font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:bg-primary transition-all flex items-center justify-center group">
+                    Intra in Search <ArrowRight size={16} className="ml-3 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                  <Link to="/dashboard" className="px-10 py-5 border border-ink/20 text-ink/60 font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:border-primary hover:text-primary transition-all flex items-center justify-center">
+                    Biblioteca Mea
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link to="/login" className="px-10 py-5 bg-ink text-on-primary font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:bg-primary transition-all flex items-center justify-center group">
+                    Autentificare <ArrowRight size={16} className="ml-3 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </>
+              )}
             </div>
           </div>
 
@@ -279,13 +309,23 @@ function HomePage() {
                   className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink/55 via-transparent to-transparent flex items-end p-6 md:p-10">
-                  <Link
-                    to="/dashboard"
-                    className="inline-flex items-center gap-2 rounded-full bg-white/90 text-ink px-5 py-2.5 text-[10px] md:text-xs uppercase tracking-[0.2em] font-bold hover:bg-white transition-colors shadow-lg"
-                  >
-                    Invita un prieten
-                    <ArrowRight size={14} />
-                  </Link>
+                  {user ? (
+                    <Link
+                      to="/dashboard"
+                      className="inline-flex items-center gap-2 rounded-full bg-white/90 text-ink px-5 py-2.5 text-[10px] md:text-xs uppercase tracking-[0.2em] font-bold hover:bg-white transition-colors shadow-lg"
+                    >
+                      Invita un prieten
+                      <ArrowRight size={14} />
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/login"
+                      className="inline-flex items-center gap-2 rounded-full bg-white/90 text-ink px-5 py-2.5 text-[10px] md:text-xs uppercase tracking-[0.2em] font-bold hover:bg-white transition-colors shadow-lg"
+                    >
+                      Intra in cont
+                      <ArrowRight size={14} />
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -295,31 +335,48 @@ function HomePage() {
 
       <section className="bg-surface-low py-32">
         <div className="max-w-[1440px] mx-auto px-6 md:px-12">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-6">
-            <div>
-              <h2 className="text-4xl font-serif font-bold text-ink italic mb-4 tracking-tight">Recomandari din catalogul public</h2>
-              <p className="text-ink/60 font-sans tracking-wide">Documente populare in index</p>
-            </div>
-            <Link to="/search" className="text-xs uppercase font-bold tracking-widest text-primary hover:opacity-70 flex items-center pb-2 border-b border-primary/20">
-              Exploreaza Colectia <ArrowRight size={14} className="ml-2" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {featured.map((book) => (
-              <div key={book.id} className="group cursor-pointer">
-                <Link to={`/book/${encodeURIComponent(book.id)}`}>
-                  <div className="aspect-[2/3] rounded-sm overflow-hidden mb-6 shadow-md shadow-ink/5 group-hover:shadow-xl group-hover:-translate-y-2 transition-all duration-250">
-                    <CoverImage src={book.coverImage} title={book.title} seed={book.id} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="font-serif text-xl font-bold text-ink leading-tight group-hover:text-primary transition-colors">{book.title}</h4>
-                    <p className="font-serif italic text-ink/50 text-base">{book.author}</p>
-                  </div>
+          {user ? (
+            <>
+              <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-6">
+                <div>
+                  <h2 className="text-4xl font-serif font-bold text-ink italic mb-4 tracking-tight">Recomandari din catalogul public</h2>
+                  <p className="text-ink/60 font-sans tracking-wide">Documente populare in index</p>
+                </div>
+                <Link to="/search" className="text-xs uppercase font-bold tracking-widest text-primary hover:opacity-70 flex items-center pb-2 border-b border-primary/20">
+                  Exploreaza Colectia <ArrowRight size={14} className="ml-2" />
                 </Link>
               </div>
-            ))}
-          </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                {featured.map((book) => (
+                  <div key={book.id} className="group cursor-pointer">
+                    <Link to={`/book/${encodeURIComponent(book.id)}`}>
+                      <div className="aspect-[2/3] rounded-sm overflow-hidden mb-6 shadow-md shadow-ink/5 group-hover:shadow-xl group-hover:-translate-y-2 transition-all duration-250">
+                        <CoverImage src={book.coverImage} title={book.title} seed={book.id} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="font-serif text-xl font-bold text-ink leading-tight group-hover:text-primary transition-colors">{book.title}</h4>
+                        <p className="font-serif italic text-ink/50 text-base">{book.author}</p>
+                      </div>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-16">
+              <h2 className="text-4xl font-serif font-bold text-ink italic mb-6 tracking-tight">Acces exclusiv pentru membri</h2>
+              <p className="text-ink/60 font-sans tracking-wide max-w-xl mx-auto mb-10">
+                Catalogul complet de carti, functia de cautare si toate celelalte facilitati sunt disponibile doar utilizatorilor inregistrati.
+              </p>
+              <Link
+                to="/login"
+                className="inline-flex items-center gap-3 px-10 py-5 bg-ink text-on-primary font-sans text-xs uppercase tracking-[0.2em] font-bold rounded-lg hover:bg-primary transition-all group"
+              >
+                Autentificare <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -1499,11 +1556,11 @@ function AnimatedRoutes({ themeMode, onToggleTheme }: { themeMode: ThemeMode; on
     <Routes location={location} key={location.pathname}>
       <Route element={<MainLayout themeMode={themeMode} onToggleTheme={onToggleTheme} />}>
         <Route path="/" element={<HomePage />} />
-        <Route path="/search" element={<CatalogPage />} />
+        <Route path="/search" element={<RequireAuth><CatalogPage /></RequireAuth>} />
         <Route path="/catalog" element={<Navigate to="/search" replace />} />
-        <Route path="/explore" element={<ExplorePage />} />
+        <Route path="/explore" element={<RequireAuth><ExplorePage /></RequireAuth>} />
         <Route path="/invite/:token" element={<InviteRegistrationPage />} />
-        <Route path="/book/:id" element={<BookDetailsPage />} />
+        <Route path="/book/:id" element={<RequireAuth><BookDetailsPage /></RequireAuth>} />
       </Route>
 
       <Route path="/dashboard" element={<DashboardLayout themeMode={themeMode} onToggleTheme={onToggleTheme} />}>
