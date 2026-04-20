@@ -135,7 +135,7 @@ export default function ProfilePage() {
                   placeholder="username@kindle.com"
                 />
               </div>
-              <p className="mt-1.5 text-[10px] text-ink/40 ml-1">Adresa de email a dispozitivului Kindle, pentru functia Send to Kindle.</p>
+              <p className="mt-1.5 text-[10px] text-ink/40 ml-1">Adresa de email a dispozitivului Kindle, pentru funcția Send to Kindle.</p>
             </div>
           </div>
 
